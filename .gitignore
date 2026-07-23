@@ -1,0 +1,15 @@
+.DS_Store
+*.log
+*.sarif
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+reports/
+.agents/skills/
+.claude/skills/
+.opencode/skills/
+.claude-mem/
+claude-mem-data/

@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+# CRLF breaks sh parsing and the tab-separated adapter columns.
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.py text eol=lf
+*.tsv text eol=lf
+Makefile text eol=lf

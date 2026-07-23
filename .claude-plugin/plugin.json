@@ -1,0 +1,15 @@
+{
+  "name": "universal-agent-skills",
+  "version": "0.1.0",
+  "description": "Portable coding-agent skills for consistent implementation and verification workflows.",
+  "author": {
+    "name": "Repository maintainers"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent-skills",
+    "coding-style",
+    "claude-code"
+  ],
+  "skills": "./skills/"
+}

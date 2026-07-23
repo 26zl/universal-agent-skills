@@ -1,0 +1,39 @@
+name: Test installers
+
+on:
+  pull_request:
+    paths:
+      - "install.*"
+      - "bootstrap.*"
+      - "adapters/**"
+      - "profiles/**"
+      - "skills/**"
+      - "scripts/sync_agent_stack.py"
+      - "scripts/test-install.*"
+      - ".github/workflows/test-installers.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  posix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: ./scripts/test-install.sh
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - shell: pwsh
+        run: ./scripts/test-install.ps1

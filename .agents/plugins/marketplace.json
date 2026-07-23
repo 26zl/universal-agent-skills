@@ -1,0 +1,20 @@
+{
+  "name": "universal-agent-skills",
+  "interface": {
+    "displayName": "Universal Agent Skills"
+  },
+  "plugins": [
+    {
+      "name": "universal-agent-skills",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

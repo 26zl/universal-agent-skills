@@ -1,0 +1,35 @@
+{
+  "name": "universal-agent-skills",
+  "version": "0.1.0",
+  "description": "Portable coding-agent skills for consistent implementation and verification workflows.",
+  "author": {
+    "name": "Repository maintainers"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent-skills",
+    "coding-style",
+    "codex",
+    "claude-code",
+    "opencode",
+    "github-copilot"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Universal Agent Skills",
+    "shortDescription": "Portable workflows for coding agents",
+    "longDescription": "Share a canonical set of Agent Skills across Codex, Claude Code, OpenCode, GitHub Copilot, and compatible tools.",
+    "developerName": "Repository maintainers",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Instructions"
+    ],
+    "defaultPrompt": [
+      "Use $coding-style while editing this codebase.",
+      "Use $simplify-code to simplify code without changing behavior.",
+      "Use $surgical-implementation to keep the change minimal and goal-driven.",
+      "Use $verify-changes before reporting completion."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

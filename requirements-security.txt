@@ -1,0 +1,2 @@
+# SkillSpector 2.4.2 is distributed from its source repository, not PyPI.
+skillspector @ git+https://github.com/NVIDIA/skillspector.git@de2b3a36dc326239d8a7216a86b1784a174912bc

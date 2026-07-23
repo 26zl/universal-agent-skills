@@ -1,0 +1,45 @@
+name: Pin freshness
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Compare profile pins with upstream
+        id: check
+        run: |
+          set -eu
+          if python3 scripts/check_pin_freshness.py --format issue > report.md; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            [ "$status" -eq 2 ] || exit "$status"
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          title="Upstream pin updates available"
+          number=$(gh issue list --state open --json number,title \
+            --jq "[.[] | select(.title == \"$title\")][0].number // empty")
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file report.md
+          else
+            gh issue create --title "$title" --body-file report.md
+          fi

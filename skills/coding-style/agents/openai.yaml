@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coding Style"
+  short_description: "Concise, neutral comments for readable code"
+  default_prompt: "Use $coding-style while editing this code."

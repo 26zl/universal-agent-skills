@@ -1,0 +1,6 @@
+# agent<TAB>global path relative to home<TAB>project path relative to repository
+codex	.agents/skills	.agents/skills
+claude	.claude/skills	.claude/skills
+opencode	.config/opencode/skills	.opencode/skills
+copilot	.agents/skills	.agents/skills
+universal	.agents/skills	.agents/skills
