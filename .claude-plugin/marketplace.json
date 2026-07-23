@@ -1,0 +1,20 @@
+{
+  "name": "universal-agent-skills",
+  "owner": {
+    "name": "Repository maintainers"
+  },
+  "description": "Portable Agent Skills for software development.",
+  "plugins": [
+    {
+      "name": "universal-agent-skills",
+      "source": "./",
+      "description": "Concise coding conventions and evidence-based verification workflows.",
+      "category": "development",
+      "keywords": [
+        "agent-skills",
+        "coding-style",
+        "verification"
+      ]
+    }
+  ]
+}

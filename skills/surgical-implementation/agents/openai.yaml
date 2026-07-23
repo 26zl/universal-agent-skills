@@ -1,0 +1,4 @@
+interface:
+  display_name: "Surgical Implementation"
+  short_description: "Make small, justified, verifiable code changes"
+  default_prompt: "Use $surgical-implementation to make the smallest justified change and verify it."

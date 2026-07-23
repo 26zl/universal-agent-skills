@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Changes"
+  short_description: "Evidence-based checks before declaring work done"
+  default_prompt: "Use $verify-changes to validate the completed changes."

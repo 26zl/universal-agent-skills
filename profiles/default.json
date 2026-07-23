@@ -1,0 +1,306 @@
+{
+  "schemaVersion": 1,
+  "name": "default",
+  "description": "Personal cross-agent stack for Claude Code, Codex, OpenCode, and GitHub Copilot.",
+  "skillsCli": {
+    "package": "skills",
+    "version": "1.5.9",
+    "disableTelemetry": true
+  },
+  "claude": {
+    "marketplaces": [
+      {
+        "name": "claude-plugins-official",
+        "source": "anthropics/claude-plugins-official"
+      },
+      {
+        "name": "karpathy-skills",
+        "source": "multica-ai/andrej-karpathy-skills",
+        "acceptedSources": [
+          "forrestchang/andrej-karpathy-skills"
+        ]
+      },
+      {
+        "name": "ecc",
+        "source": "https://github.com/affaan-m/ECC.git"
+      },
+      {
+        "name": "ponytail",
+        "source": "DietrichGebert/ponytail"
+      },
+      {
+        "name": "thedotmack",
+        "source": "thedotmack/claude-mem"
+      },
+      {
+        "name": "humanizer",
+        "source": "blader/humanizer"
+      }
+    ],
+    "plugins": [
+      {
+        "id": "andrej-karpathy-skills@karpathy-skills",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Minimal, goal-driven implementation guidance."
+      },
+      {
+        "id": "code-simplifier@claude-plugins-official",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Focused code simplification."
+      },
+      {
+        "id": "context7@claude-plugins-official",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Runs a networked documentation MCP server."
+      },
+      {
+        "id": "ecc@ecc",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Large workflow bundle with skills, hooks, commands, and MCP configuration."
+      },
+      {
+        "id": "firecrawl@claude-plugins-official",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Networked crawling integration that may require credentials."
+      },
+      {
+        "id": "frontend-design@claude-plugins-official",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Frontend design workflow guidance."
+      },
+      {
+        "id": "playwright@claude-plugins-official",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Runs a browser automation MCP server."
+      },
+      {
+        "id": "ponytail@ponytail",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Agent orchestration plugin with executable integration code."
+      },
+      {
+        "id": "skill-creator@claude-plugins-official",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Creates and validates skills."
+      },
+      {
+        "id": "superpowers@claude-plugins-official",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Structured engineering workflows."
+      },
+      {
+        "id": "claude-mem@thedotmack",
+        "enabled": true,
+        "risk": "sensitive",
+        "requiresExplicitOptIn": true,
+        "reason": "Captures session and tool-use context in a persistent local memory service."
+      },
+      {
+        "id": "humanizer@humanizer",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Rewrites prose to remove common AI-writing patterns."
+      }
+    ]
+  },
+  "codex": {
+    "marketplaces": [
+      {
+        "name": "ponytail",
+        "source": "DietrichGebert/ponytail",
+        "ref": "16f29800fd2681bdf24f3eb4ccffe38be3baec6b"
+      }
+    ],
+    "plugins": [
+      {
+        "id": "documents@openai-primary-runtime",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Existing Codex document workflow retained across reconciliation."
+      },
+      {
+        "id": "pdf@openai-primary-runtime",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Existing Codex PDF workflow retained across reconciliation."
+      },
+      {
+        "id": "spreadsheets@openai-primary-runtime",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Existing Codex spreadsheet workflow retained across reconciliation."
+      },
+      {
+        "id": "presentations@openai-primary-runtime",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Existing Codex presentation workflow retained across reconciliation."
+      },
+      {
+        "id": "template-creator@openai-primary-runtime",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Existing Codex artifact-template workflow retained across reconciliation."
+      },
+      {
+        "id": "sites@openai-bundled",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Existing Codex site-building workflow retained across reconciliation."
+      },
+      {
+        "id": "browser@openai-bundled",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Browser inspection and automation equivalent to the browser-testing part of the Claude stack."
+      },
+      {
+        "id": "visualize@openai-bundled",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Existing Codex visualization workflow retained across reconciliation."
+      },
+      {
+        "id": "computer-use@openai-bundled",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Native Codex computer interaction capability."
+      },
+      {
+        "id": "superpowers@openai-curated",
+        "enabled": true,
+        "risk": "standard",
+        "reason": "Codex-native structured engineering workflows."
+      },
+      {
+        "id": "ponytail@ponytail",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Codex-compatible orchestration plugin with executable hooks."
+      }
+    ]
+  },
+  "copilot": {
+    "marketplaces": [
+      {
+        "name": "ponytail",
+        "source": "DietrichGebert/ponytail"
+      }
+    ],
+    "plugins": [
+      {
+        "id": "ponytail@ponytail",
+        "enabled": true,
+        "risk": "elevated",
+        "reason": "Full Ponytail plugin for Copilot CLI; editor integrations use repository instructions and shared skills."
+      }
+    ]
+  },
+  "opencode": {
+    "plugins": [
+      {
+        "package": "@dietrichgebert/ponytail",
+        "version": "4.8.4",
+        "risk": "elevated",
+        "reason": "OpenCode-native Ponytail rules and commands."
+      }
+    ]
+  },
+  "vscode": {
+    "extensions": [
+      {
+        "id": "GitHub.copilot-chat",
+        "risk": "elevated",
+        "reason": "GitHub Copilot integration for Visual Studio Code; sign-in remains user-controlled."
+      }
+    ]
+  },
+  "mcpServers": [
+    {
+      "name": "context7",
+      "transport": "stdio",
+      "command": [
+        "npx",
+        "-y",
+        "@upstash/context7-mcp@3.2.4"
+      ],
+      "agents": [
+        "codex",
+        "opencode",
+        "copilot"
+      ],
+      "risk": "elevated",
+      "reason": "Current library documentation through the exact official local Context7 MCP package, avoiding an interactive OAuth bootstrap."
+    },
+    {
+      "name": "playwright",
+      "transport": "stdio",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@0.0.78"
+      ],
+      "agents": [
+        "copilot"
+      ],
+      "risk": "elevated",
+      "reason": "Browser automation for Copilot CLI; Codex uses its installed Browser plugin and Claude uses its native plugin."
+    }
+  ],
+  "nativeInstallers": [
+    {
+      "name": "ecc-opencode",
+      "package": "ecc-universal",
+      "version": "2.0.0",
+      "executable": "ecc-install",
+      "statePath": ".opencode/ecc-install-state.json",
+      "arguments": [
+        "--modules",
+        "commands-core,hooks-runtime,workflow-quality",
+        "--target",
+        "opencode"
+      ],
+      "risk": "elevated",
+      "reason": "ECC native OpenCode adapter; do not combine it with an ECC OpenCode plugin."
+    }
+  ],
+  "portableSkills": [
+    {
+      "name": "karpathy-guidelines",
+      "source": "https://github.com/multica-ai/andrej-karpathy-skills/tree/2c606141936f1eeef17fa3043a72095b4765b9c2",
+      "agents": [
+        "codex",
+        "opencode"
+      ],
+      "scope": "global"
+    },
+    {
+      "name": "humanizer",
+      "source": "https://github.com/blader/humanizer/tree/523374dee72d67c7b2b5f858ea0094ffda49c3ac",
+      "agents": [
+        "codex",
+        "opencode"
+      ],
+      "scope": "global"
+    },
+    {
+      "name": "frontend-design",
+      "source": "https://github.com/anthropics/claude-plugins-official/tree/8271e720df2580c5a16badfc802753798bf56759",
+      "agents": [
+        "codex",
+        "opencode"
+      ],
+      "scope": "global"
+    }
+  ]
+}
