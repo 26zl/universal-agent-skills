@@ -17,7 +17,7 @@ DEFAULT_PROFILE = ROOT / "profiles" / "default.json"
 
 
 def config_path(home: Path) -> Path:
-    config_home = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
     jsonc = config_home / "opencode" / "opencode.jsonc"
     plain = config_home / "opencode" / "opencode.json"
     return jsonc if jsonc.exists() or not plain.exists() else plain
@@ -44,7 +44,10 @@ def desired_servers(profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def merge_config(
-    current: dict[str, Any], desired: dict[str, dict[str, Any]]
+    current: dict[str, Any],
+    desired: dict[str, dict[str, Any]],
+    *,
+    replace_conflicts: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     updated = json.loads(json.dumps(current))
     mcp = updated.setdefault("mcp", {})
@@ -54,7 +57,7 @@ def merge_config(
     for name, definition in desired.items():
         if mcp.get(name) == definition:
             continue
-        if name in mcp:
+        if name in mcp and not replace_conflicts:
             raise ValueError(
                 f"refusing to replace unmanaged OpenCode MCP entry: {name}"
             )
@@ -91,6 +94,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Replace profile-named MCP entries that differ from the profile",
+    )
     args = parser.parse_args(argv)
     if args.apply and args.check:
         parser.error("--apply and --check cannot be combined")
@@ -99,7 +107,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
-    home = Path(os.environ.get("UAS_HOME", Path.home())).expanduser()
+    home = Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
     path = config_path(home)
     try:
         profile = json.loads(args.profile.read_text(encoding="utf-8"))
@@ -108,7 +116,11 @@ def main(argv: list[str] | None = None) -> int:
         }
         if not isinstance(current, dict):
             raise ValueError("OpenCode config must be a JSON object")
-        updated, changed = merge_config(current, desired_servers(profile))
+        updated, changed = merge_config(
+            current,
+            desired_servers(profile),
+            replace_conflicts=args.update,
+        )
     except (OSError, UnicodeError, json.JSONDecodeError, KeyError, ValueError) as exc:
         print(
             f"error: cannot safely merge {path}: {exc}; comments must be removed or the MCP entry added manually",

@@ -15,6 +15,7 @@ from sync_agent_stack import validate_profile
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "skills"
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 LINK_RE = re.compile(r"\[[^]]*]\(([^)]+)\)")
 ALLOWED_FIELDS = {
     "name",
@@ -106,6 +107,33 @@ def load_json(path: Path) -> dict:
     return value
 
 
+def validate_plugin_versions(
+    codex_version: object,
+    claude_version: object,
+    ref_type: str = "",
+    ref_name: str = "",
+) -> list[str]:
+    errors: list[str] = []
+    versions = {
+        "Codex plugin": codex_version,
+        "Claude plugin": claude_version,
+    }
+    for label, version in versions.items():
+        if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
+            errors.append(f"{label} version must use MAJOR.MINOR.PATCH")
+    if not errors and codex_version != claude_version:
+        errors.append("Codex and Claude plugin versions must match")
+    if ref_type == "tag":
+        tag_match = re.fullmatch(r"v(\d+\.\d+\.\d+)", ref_name)
+        if tag_match is None:
+            errors.append(f"release tag {ref_name!r} must use vMAJOR.MINOR.PATCH")
+        elif isinstance(codex_version, str) and tag_match.group(1) != codex_version:
+            errors.append(
+                f"release tag {ref_name} must match plugin version {codex_version}"
+            )
+    return errors
+
+
 def validate_manifests() -> list[str]:
     errors: list[str] = []
     paths = [
@@ -127,6 +155,16 @@ def validate_manifests() -> list[str]:
             errors.append(f"{path}: unexpected plugin name")
         if manifest.get("skills") != "./skills/":
             errors.append(f"{path}: skills must point to ./skills/")
+    codex_version = loaded.get(paths[0], {}).get("version")
+    claude_version = loaded.get(paths[1], {}).get("version")
+    errors.extend(
+        validate_plugin_versions(
+            codex_version,
+            claude_version,
+            os.environ.get("GITHUB_REF_TYPE", ""),
+            os.environ.get("GITHUB_REF_NAME", ""),
+        )
+    )
 
     codex_market = loaded.get(paths[3], {})
     for plugin in codex_market.get("plugins", []):

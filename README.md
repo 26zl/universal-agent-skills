@@ -72,7 +72,7 @@ cd universal-agent-skills
 
 The default is a global symbolic-link installation for Codex/GitHub Copilot, Claude Code, and OpenCode. Editing a canonical skill updates every linked agent immediately.
 
-Existing plugins and skills installed through each agent's own manager are never touched, so nothing needs to be uninstalled first: the installer only manages its own entries and stops on unmanaged name conflicts, and the stack reconciler leaves everything outside the profile unchanged.
+You do not need to uninstall existing entries first. The direct skill installer manages only its own recorded targets and refuses unmanaged path conflicts unless `--force` is explicit. The stack reconciler leaves entries outside the profile unchanged; for entries declared in the profile, `--apply` may install or enable them, and `--update` may update them.
 
 Use copies when symbolic links are unavailable or undesirable:
 
@@ -90,26 +90,30 @@ Install only selected agents or skills:
 Install into the current project instead of the user profile:
 
 ```bash
-./install.sh --scope project
+./install.sh --scope project --project-dir ~/path/to/project
 ```
+
+Without `--project-dir` the current directory is used; PowerShell accepts the same through `-Scope project -ProjectDir`. Project installations land in the project's own discovery paths (`.claude/skills`, `.agents/skills`, `.opencode/skills`) and are tracked separately from global installations, so uninstalling one scope never touches the other. Prefer `--mode copy` for shared projects because symbolic links point into your local clone.
 
 ## Bootstrap one-liner for macOS and Linux
 
-Pin a release tag or full commit for reproducible installs:
+Pin a full commit for immutable installs, or use a protected release tag for release-oriented installs:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.1.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.1.0
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.2.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.2.0
 ```
 
-For a rolling installation that follows `main`, change both occurrences of `v0.1.0` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
+For a rolling installation that follows `main`, change both occurrences of `v0.2.0` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
 
 Add `--with-agent-stack` to reconcile the complete declared stack: Claude plugins, Codex and Copilot CLI plugins, the OpenCode Ponytail plugin, the VS Code Copilot extension, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.1.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.1.0 --with-agent-stack --include-sensitive-plugins
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.2.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.2.0 --with-agent-stack --include-sensitive-plugins
 ```
 
 Piping remote code into a shell trades reviewability for convenience. For higher assurance, download the script, inspect it, and execute it from disk. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
+
+Agent-stack reconciliation requires Python 3.9 or newer. Direct repository-skill installation does not require Python.
 
 ## Windows PowerShell
 
@@ -122,7 +126,7 @@ From a clone:
 Pinned remote bootstrap in one line:
 
 ```powershell
-$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.1.0/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.1.0
+$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.2.0/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.2.0
 ```
 
 PowerShell `auto` mode tries symbolic links first and falls back to copies when Windows Developer Mode or sufficient privileges are unavailable.
@@ -273,6 +277,7 @@ python3 scripts/validate.py
 python3 scripts/test_sync_agent_stack.py
 python3 scripts/test_sync_instructions.py
 python3 scripts/test_sync_opencode_config.py
+python3 scripts/test_check_pin_freshness.py
 ./scripts/test-install.sh
 ```
 

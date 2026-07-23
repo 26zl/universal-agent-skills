@@ -5,12 +5,17 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import sync_agent_stack as stack
+import sync_instructions as instructions
+import validate as repository_validate
 
 
 PROFILE_PATH = Path(__file__).resolve().parents[1] / "profiles" / "default.json"
@@ -23,6 +28,27 @@ class AgentStackTests(unittest.TestCase):
 
     def test_profile_is_valid(self) -> None:
         self.assertEqual(stack.validate_profile(self.profile), [])
+
+    def test_plugin_versions_and_release_tags_are_validated(self) -> None:
+        self.assertEqual(
+            repository_validate.validate_plugin_versions(
+                "1.2.3", "1.2.3", "tag", "v1.2.3"
+            ),
+            [],
+        )
+        self.assertTrue(
+            repository_validate.validate_plugin_versions("1.2.3", "1.2.4")
+        )
+        self.assertTrue(
+            repository_validate.validate_plugin_versions(
+                "not-semver", "not-semver", "tag", "vnot-semver"
+            )
+        )
+        self.assertTrue(
+            repository_validate.validate_plugin_versions(
+                "1.2.3", "1.2.3", "tag", "v9.9.9"
+            )
+        )
 
     def test_marketplace_sources_reject_unsafe_values(self) -> None:
         profile = copy.deepcopy(self.profile)
@@ -42,6 +68,107 @@ class AgentStackTests(unittest.TestCase):
         self.assertTrue(
             stack.source_matches("forrestchang/andrej-karpathy-skills", desired)
         )
+        self.assertFalse(
+            stack.source_matches(
+                "http://github.com/multica-ai/andrej-karpathy-skills.git",
+                desired,
+            )
+        )
+
+    def test_disabled_plugins_are_not_installed(self) -> None:
+        profile = copy.deepcopy(self.profile)
+        claude_plugin = profile["claude"]["plugins"][0]
+        claude_plugin["enabled"] = False
+        claude_plan = stack.build_claude_plan(
+            profile, [], [], include_sensitive=False, update=False
+        )
+        self.assertFalse(
+            any(claude_plugin["id"] in action.command for action in claude_plan.actions)
+        )
+
+        codex_plugin = profile["codex"]["plugins"][0]
+        codex_plugin["enabled"] = False
+        codex_plan = stack.build_codex_plan(profile, [], [], update=False)
+        self.assertFalse(
+            any(codex_plugin["id"] in action.command for action in codex_plan.actions)
+        )
+
+        copilot_plugin = profile["copilot"]["plugins"][0]
+        copilot_plugin["enabled"] = False
+        copilot_plan = stack.build_copilot_plan(profile, "", "", update=False)
+        self.assertFalse(
+            any(copilot_plugin["id"] in action.command for action in copilot_plan.actions)
+        )
+
+    def test_active_disabled_desired_plugins_are_drift(self) -> None:
+        profile = copy.deepcopy(self.profile)
+        claude_plugin = profile["claude"]["plugins"][0]
+        claude_plugin["enabled"] = False
+        claude_plan = stack.build_claude_plan(
+            profile,
+            [],
+            [{"id": claude_plugin["id"], "enabled": True}],
+            include_sensitive=False,
+            update=False,
+        )
+        self.assertTrue(claude_plan.drift)
+        self.assertIn(
+            ("claude", "plugin", "disable", claude_plugin["id"], "--scope", "user"),
+            [action.command for action in claude_plan.actions],
+        )
+
+        codex_plugin = profile["codex"]["plugins"][0]
+        codex_plugin["enabled"] = False
+        codex_plan = stack.build_codex_plan(
+            profile,
+            [],
+            [
+                {
+                    "pluginId": codex_plugin["id"],
+                    "installed": True,
+                    "enabled": True,
+                }
+            ],
+            update=False,
+        )
+        self.assertTrue(codex_plan.drift)
+        self.assertTrue(codex_plan.blocking)
+
+        copilot_plugin = profile["copilot"]["plugins"][0]
+        copilot_plugin["enabled"] = False
+        copilot_plan = stack.build_copilot_plan(
+            profile, "", copilot_plugin["id"], update=False
+        )
+        self.assertTrue(copilot_plan.drift)
+        self.assertTrue(copilot_plan.blocking)
+
+    def test_profile_validation_rejects_unhashable_agent_entries(self) -> None:
+        profile = copy.deepcopy(self.profile)
+        profile["mcpServers"][0]["agents"] = [{}]
+        errors = stack.validate_profile(profile)
+        self.assertTrue(any("agents" in error for error in errors))
+
+    def test_planners_reject_malformed_external_inventory(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "Claude marketplace"):
+            stack.build_claude_plan(
+                self.profile,
+                [{"name": []}],
+                [],
+                include_sensitive=False,
+                update=False,
+            )
+        with self.assertRaisesRegex(RuntimeError, "Codex marketplace"):
+            stack.build_codex_plan(
+                self.profile,
+                [
+                    {
+                        "name": "ponytail",
+                        "marketplaceSource": None,
+                    }
+                ],
+                [],
+                update=False,
+            )
 
     def test_sensitive_plugin_requires_opt_in(self) -> None:
         plan = stack.build_claude_plan(
@@ -121,6 +248,98 @@ class AgentStackTests(unittest.TestCase):
         )
         self.assertTrue(any(command[-1] == "ponytail@ponytail" for command in commands))
 
+    def test_codex_plan_enforces_pinned_marketplace_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / ".codex" / ".tmp" / "marketplaces" / "ponytail"
+            root.mkdir(parents=True)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "fixture.txt").write_text("fixture\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "fixture.txt"], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "fixture",
+                ],
+                check=True,
+            )
+            revision = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            (root / ".codex-marketplace-install.json").write_text(
+                json.dumps({"revision": revision}),
+                encoding="utf-8",
+            )
+            marketplace = {
+                "name": "ponytail",
+                "root": str(root),
+                "marketplaceSource": {
+                    "sourceType": "git",
+                    "source": "https://github.com/DietrichGebert/ponytail.git",
+                },
+            }
+            current_plugins = [
+                {
+                    "pluginId": "ponytail@ponytail",
+                    "name": "ponytail",
+                    "marketplaceName": "ponytail",
+                    "version": "4.8.4",
+                    "installed": True,
+                    "enabled": True,
+                }
+            ]
+            audit = stack.build_codex_plan(
+                self.profile, [marketplace], current_plugins, update=False
+            )
+            self.assertTrue(any("revision" in item for item in audit.drift))
+            self.assertTrue(audit.blocking)
+
+            updated = stack.build_codex_plan(
+                self.profile,
+                [marketplace],
+                current_plugins,
+                update=True,
+                codex_command="codex-test",
+            )
+            commands = [action.command for action in updated.actions]
+            self.assertIn(
+                ("codex-test", "plugin", "marketplace", "remove", "ponytail"),
+                commands,
+            )
+            self.assertIn(
+                (
+                    "codex-test",
+                    "plugin",
+                    "marketplace",
+                    "add",
+                    "DietrichGebert/ponytail",
+                    "--ref",
+                    "16f29800fd2681bdf24f3eb4ccffe38be3baec6b",
+                ),
+                commands,
+            )
+            self.assertIn(
+                ("codex-test", "plugin", "remove", "ponytail@ponytail"),
+                commands,
+            )
+            self.assertIn(
+                ("codex-test", "plugin", "add", "ponytail@ponytail"),
+                commands,
+            )
+            self.assertFalse(any("upgrade" in command for command in commands))
+            self.assertEqual(updated.blocking, [])
+
     def test_copilot_plan_uses_marketplace_plugin_id(self) -> None:
         plan = stack.build_copilot_plan(
             self.profile,
@@ -147,6 +366,15 @@ class AgentStackTests(unittest.TestCase):
                 "--global",
             ),
         )
+        for config in (
+            '{"plugin": [], "note": "@dietrichgebert/ponytail@4.8.4"}',
+            '{"plugin": ["@dietrichgebert/ponytail@4.8.40"]}',
+            '{"plugin": []} // @dietrichgebert/ponytail@4.8.4',
+        ):
+            drifted = stack.build_opencode_plan(
+                self.profile, config, update=False
+            )
+            self.assertTrue(drifted.drift)
 
     def test_native_ecc_installers_are_target_specific(self) -> None:
         actions = stack.build_native_installer_actions(
@@ -157,6 +385,112 @@ class AgentStackTests(unittest.TestCase):
             all("--package=ecc-universal@2.0.0" in action.command for action in actions)
         )
         self.assertIn("opencode", actions[0].command)
+
+    def test_native_plan_reports_missing_state_as_drift(self) -> None:
+        plan = stack.build_native_plan(
+            self.profile, "npx-test", Path("/tmp/missing-ecc-state")
+        )
+        self.assertEqual(len(plan.actions), 1)
+        self.assertTrue(any("ecc-opencode" in item for item in plan.drift))
+
+    def test_portable_skill_plan_verifies_installed_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "SKILL.md").write_text(
+                "---\nname: fixture-skill\ndescription: Test fixture.\n---\n\nFixture.\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            subprocess.run(["git", "-C", str(source), "add", "SKILL.md"], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(source),
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "fixture",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(source),
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/example/fixture.git",
+                ],
+                check=True,
+            )
+            commit = subprocess.run(
+                ["git", "-C", str(source), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            profile = {
+                "skillsCli": {
+                    "package": "skills",
+                    "version": "1.5.9",
+                    "disableTelemetry": True,
+                },
+                "portableSkills": [
+                    {
+                        "name": "fixture-skill",
+                        "source": (
+                            "https://github.com/example/fixture/tree/"
+                            f"{commit}"
+                        ),
+                        "agents": ["codex", "opencode"],
+                        "scope": "global",
+                    }
+                ],
+            }
+            cache = root / "cache"
+            checkout = cache / "fixture-skill" / commit
+            checkout.parent.mkdir(parents=True)
+            shutil.copytree(source, checkout)
+            home = root / "home"
+            target = home / ".agents" / "skills" / "fixture-skill"
+            target.parent.mkdir(parents=True)
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns(".git"))
+
+            current = stack.build_portable_skill_plan(
+                profile, "npx-test", cache, home
+            )
+            self.assertEqual(current.drift, [])
+            self.assertEqual(current.actions, [])
+
+            (target / "SKILL.md").write_text("changed\n", encoding="utf-8")
+            drifted = stack.build_portable_skill_plan(
+                profile, "npx-test", cache, home
+            )
+            self.assertTrue(any("fixture-skill" in item for item in drifted.drift))
+            self.assertEqual(len(drifted.actions), 1)
+
+    def test_instruction_plan_reports_only_real_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            drifted = stack.build_instruction_plan(home)
+            self.assertEqual(len(drifted.drift), len(instructions.SUPPORTED_AGENTS))
+            self.assertEqual(len(drifted.actions), 1)
+
+            for target in instructions.targets(home).values():
+                target.path.parent.mkdir(parents=True, exist_ok=True)
+                target.path.write_text(instructions.BLOCK + "\n", encoding="utf-8")
+            current = stack.build_instruction_plan(home)
+            self.assertEqual(current.drift, [])
+            self.assertEqual(current.actions, [])
 
     def test_mcp_plan_uses_each_clients_supported_syntax(self) -> None:
         plan = stack.build_mcp_plan(
@@ -219,6 +553,217 @@ class AgentStackTests(unittest.TestCase):
             [action.command for action in updated.actions],
         )
         self.assertEqual(updated.blocking, [])
+        disabled = {
+            "transport": {
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "@upstash/context7-mcp@3.2.4"],
+            },
+            "enabled": False,
+        }
+        context7 = next(
+            server for server in self.profile["mcpServers"] if server["name"] == "context7"
+        )
+        self.assertFalse(stack.codex_mcp_matches(context7, disabled))
+        duplicate = stack.build_mcp_plan(
+            self.profile,
+            {"codex": {"context7"}, "opencode": {"context7"}, "copilot": {"context7", "playwright"}},
+            profile_path=PROFILE_PATH,
+            conflicting_names={"codex": {"context7"}},
+        )
+        self.assertTrue(any("codex MCP server differs" in item for item in duplicate.drift))
+        self.assertTrue(duplicate.blocking)
+
+    def test_opencode_mcp_update_is_aggregated(self) -> None:
+        profile = copy.deepcopy(self.profile)
+        additional = copy.deepcopy(
+            next(
+                server
+                for server in profile["mcpServers"]
+                if server["name"] == "context7"
+            )
+        )
+        additional["name"] = "context8"
+        profile["mcpServers"].append(additional)
+        updated = stack.build_mcp_plan(
+            profile,
+            {
+                "codex": {"context7"},
+                "opencode": set(),
+                "copilot": {"context7", "playwright"},
+            },
+            profile_path=PROFILE_PATH,
+            update=True,
+            conflicting_names={"opencode": {"context7"}},
+        )
+        opencode_actions = [
+            action
+            for action in updated.actions
+            if any(part.endswith("sync_opencode_config.py") for part in action.command)
+        ]
+        self.assertEqual(len(opencode_actions), 1)
+        self.assertIn("--update", opencode_actions[0].command)
+
+    def test_mcp_inventory_requires_matching_definitions(self) -> None:
+        opencode_current, opencode_conflicts = stack.opencode_mcp_inventory(
+            self.profile,
+            json.dumps(
+                {
+                    "mcp": {
+                        "context7": {
+                            "type": "local",
+                            "command": ["npx", "-y", "unexpected-package@1.0.0"],
+                            "enabled": True,
+                        }
+                    }
+                }
+            ),
+        )
+        self.assertNotIn("context7", opencode_current)
+        self.assertIn("context7", opencode_conflicts)
+
+        copilot_current, copilot_conflicts = stack.copilot_mcp_inventory(
+            self.profile,
+            {
+                "mcpServers": {
+                    "playwright": {
+                        "type": "local",
+                        "command": "npx",
+                        "args": ["-y", "@playwright/mcp@0.0.1"],
+                        "enabled": True,
+                    }
+                }
+            },
+        )
+        self.assertNotIn("playwright", copilot_current)
+        self.assertIn("playwright", copilot_conflicts)
+        malformed_current, malformed_conflicts = stack.mcp_inventory(
+            self.profile,
+            "opencode",
+            {"context7": "not-an-object"},
+            stack.opencode_mcp_matches,
+        )
+        self.assertNotIn("context7", malformed_current)
+        self.assertIn("context7", malformed_conflicts)
+        duplicate_current, duplicate_conflicts = stack.mcp_inventory(
+            self.profile,
+            "opencode",
+            {
+                "context7": {
+                    "type": "local",
+                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                    "enabled": True,
+                },
+                "Context7": {
+                    "type": "local",
+                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                    "enabled": True,
+                },
+            },
+            stack.opencode_mcp_matches,
+        )
+        self.assertNotIn("context7", duplicate_current)
+        self.assertIn("context7", duplicate_conflicts)
+
+    def test_mcp_inventory_accepts_jsonc_comments(self) -> None:
+        current, conflicts = stack.opencode_mcp_inventory(
+            self.profile,
+            """
+            {
+              // Managed Context7 server.
+              "mcp": {
+                "context7": {
+                  "type": "local",
+                  "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                  "enabled": true,
+                },
+              },
+            }
+            """,
+        )
+        self.assertIn("context7", current)
+        self.assertNotIn("context7", conflicts)
+
+    def test_jsonc_drift_blocks_automatic_opencode_merge(self) -> None:
+        plan = stack.build_mcp_plan(
+            self.profile,
+            {"codex": {"context7"}, "opencode": set(), "copilot": {"context7", "playwright"}},
+            profile_path=PROFILE_PATH,
+        )
+        guarded = stack.guard_jsonc_opencode_plan(
+            plan,
+            self.profile,
+            set(),
+            set(),
+            '{"mcp": { /* keep this comment */ }}',
+        )
+        self.assertTrue(guarded.blocking)
+        self.assertFalse(
+            any(
+                any(part.endswith("sync_opencode_config.py") for part in action.command)
+                for action in guarded.actions
+            )
+        )
+
+    def test_mcp_matchers_reject_undeclared_execution_options(self) -> None:
+        context7 = next(
+            server for server in self.profile["mcpServers"] if server["name"] == "context7"
+        )
+        codex = {
+            "enabled": True,
+            "transport": {
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "@upstash/context7-mcp@3.2.4"],
+                "env": {"UNDECLARED": "1"},
+                "env_vars": [],
+                "cwd": None,
+            },
+        }
+        self.assertFalse(stack.codex_mcp_matches(context7, codex))
+        opencode = {
+            "type": "local",
+            "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+            "enabled": True,
+            "environment": {"UNDECLARED": "1"},
+        }
+        self.assertFalse(stack.opencode_mcp_matches(context7, opencode))
+        copilot = {
+            "type": "local",
+            "command": "npx",
+            "args": ["-y", "@upstash/context7-mcp@3.2.4"],
+            "enabled": True,
+            "tools": ["*"],
+            "source": "user",
+            "cwd": "/tmp",
+        }
+        self.assertFalse(stack.copilot_mcp_matches(context7, copilot))
+
+    def test_empty_path_overrides_use_home_defaults(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "UAS_HOME": "",
+                "UAS_SOURCE_CACHE": "",
+                "XDG_CONFIG_HOME": "",
+                "XDG_DATA_HOME": "",
+                "LOCALAPPDATA": "",
+            },
+        ):
+            home = Path.home()
+            self.assertEqual(
+                stack.opencode_config_path(),
+                home / ".config" / "opencode" / "opencode.jsonc",
+            )
+            expected_data = (
+                home / "AppData" / "Local"
+                if os.name == "nt"
+                else home / ".local" / "share"
+            )
+            self.assertEqual(
+                stack.source_cache_root(),
+                expected_data / "universal-agent-skills" / "sources",
+            )
 
     def test_sensitive_opt_out_is_not_drift(self) -> None:
         plan = stack.build_claude_plan(

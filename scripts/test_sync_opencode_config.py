@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import os
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import sync_opencode_config as sync
 
@@ -30,6 +33,37 @@ class OpenCodeConfigTests(unittest.TestCase):
             sync.merge_config(
                 {"mcp": {"context7": {"type": "remote", "url": "https://example"}}},
                 {"context7": {"type": "local", "command": ["context7"]}},
+            )
+
+    def test_explicit_update_replaces_profile_named_conflict(self) -> None:
+        current = {
+            "mcp": {
+                "context7": {
+                    "type": "local",
+                    "command": ["npx", "-y", "unexpected-package@1.0.0"],
+                    "enabled": True,
+                }
+            }
+        }
+        desired = {
+            "context7": {
+                "type": "local",
+                "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                "enabled": True,
+            }
+        }
+        updated, changed = sync.merge_config(
+            current, desired, replace_conflicts=True
+        )
+        self.assertEqual(updated["mcp"]["context7"], desired["context7"])
+        self.assertEqual(changed, ["context7"])
+
+    def test_empty_xdg_config_home_uses_home_default(self) -> None:
+        home = Path("/expected-home")
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": ""}):
+            self.assertEqual(
+                sync.config_path(home),
+                home / ".config" / "opencode" / "opencode.jsonc",
             )
 
 

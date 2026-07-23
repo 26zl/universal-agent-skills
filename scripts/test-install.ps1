@@ -17,6 +17,13 @@ try {
     Assert-True (Test-Path (Join-Path $env:UAS_HOME ".config/opencode/skills/coding-style/SKILL.md")) "OpenCode copy missing"
 
     & (Join-Path $Root "install.ps1") -Mode copy -Agents codex,claude,opencode
+    $statePath = Join-Path $env:UAS_STATE_HOME "installed.json"
+    $stateBefore = Get-Content -LiteralPath $statePath -Raw
+    $dryUninstallOutput = @(& (Join-Path $Root "install.ps1") -DryRun -Uninstall `
+        -Agents codex,claude,opencode)
+    Assert-True ((Get-Content -LiteralPath $statePath -Raw) -eq $stateBefore) "Dry-run uninstall changed installer state"
+    Assert-True (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/coding-style")) "Dry-run uninstall removed a target"
+    Assert-True (-not (($dryUninstallOutput -join "`n") -match "(?m)^removed \[")) "Dry-run uninstall reported completed removal"
     & (Join-Path $Root "install.ps1") -Uninstall -Agents codex,claude,opencode
     Assert-True (-not (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/coding-style"))) "Codex uninstall failed"
     Assert-True (-not (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/surgical-implementation"))) "Surgical implementation uninstall failed"
@@ -43,6 +50,72 @@ try {
     Assert-True (-not (Test-Path $conflictTarget)) "Forced install uninstall failed"
 
     & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style
+    Set-Item -Path Function:Copy-Item -Value { throw "simulated copy failure" }
+    $refreshFailed = $false
+    try {
+        & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style
+    } catch {
+        $refreshFailed = $true
+    } finally {
+        Remove-Item Function:Copy-Item
+    }
+    Assert-True $refreshFailed "Copy refresh should fail when staging fails"
+    Assert-True (Test-Path (Join-Path $conflictTarget "SKILL.md")) "Failed copy refresh removed the working installation"
+    $staging = @(Get-ChildItem -LiteralPath (Split-Path -Parent $conflictTarget) -Filter ".coding-style.uas-tmp.*" -Force)
+    Assert-True ($staging.Count -eq 0) "Failed copy refresh left a staging directory"
+
+    Set-Item -Path Function:Move-Item -Value {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)][string]$LiteralPath,
+            [Parameter(Mandatory)][string]$Destination,
+            [switch]$Force
+        )
+        if ($LiteralPath -like "*.uas-tmp.*") {
+            throw "simulated activation failure"
+        }
+        Microsoft.PowerShell.Management\Move-Item @PSBoundParameters
+    }
+    $activationFailed = $false
+    try {
+        & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style
+    } catch {
+        $activationFailed = $true
+    } finally {
+        Remove-Item Function:Move-Item
+    }
+    Assert-True $activationFailed "Copy refresh should fail when activation fails"
+    Assert-True (Test-Path (Join-Path $conflictTarget "SKILL.md")) "Activation failure removed the managed target"
+    $rollbackPaths = @(Get-ChildItem -LiteralPath (Split-Path -Parent $conflictTarget) `
+        -Filter ".coding-style.uas-old.*" -Force)
+    Assert-True ($rollbackPaths.Count -eq 0) "Activation failure left a rollback directory"
+
+    Remove-Item -LiteralPath $conflictTarget -Recurse -Force
+    New-Item -ItemType Directory -Path $conflictTarget -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $conflictTarget "owner.txt") -Value "unmanaged"
+    Set-Item -Path Function:Move-Item -Value {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)][string]$LiteralPath,
+            [Parameter(Mandatory)][string]$Destination,
+            [switch]$Force
+        )
+        if ($LiteralPath -like "*.uas-tmp.*") {
+            throw "simulated activation failure"
+        }
+        Microsoft.PowerShell.Management\Move-Item @PSBoundParameters
+    }
+    $forcedActivationFailed = $false
+    try {
+        & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style -Force
+    } catch {
+        $forcedActivationFailed = $true
+    } finally {
+        Remove-Item Function:Move-Item
+    }
+    Assert-True $forcedActivationFailed "Forced copy should fail when activation fails"
+    Assert-True (Test-Path (Join-Path $conflictTarget "owner.txt")) "Activation failure did not restore unmanaged target"
+
     Remove-Item -LiteralPath $conflictTarget -Recurse -Force
     New-Item -ItemType Directory -Path $conflictTarget -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $conflictTarget "notes.txt") -Value "user-content"
@@ -65,6 +138,15 @@ try {
     & (Join-Path $Root "install.ps1") -Uninstall -Scope project -ProjectDir $project -Agents claude
     Assert-True (-not (Test-Path (Join-Path $project ".claude/skills/verify-changes"))) "Project uninstall failed"
 
+    $missingProject = Join-Path $TempRoot "missing-project"
+    $missingProjectRejected = $false
+    try {
+        & (Join-Path $Root "install.ps1") -DryRun -Mode copy -Scope project -ProjectDir $missingProject -Agents claude
+    } catch {
+        $missingProjectRejected = $true
+    }
+    Assert-True $missingProjectRejected "PowerShell accepted a missing project directory"
+
     $dryHome = Join-Path $TempRoot "dry-home"
     $env:UAS_HOME = $dryHome
     & (Join-Path $Root "install.ps1") -DryRun -Agents all
@@ -81,6 +163,34 @@ try {
         $unsafeRefRejected = $true
     }
     Assert-True $unsafeRefRejected "Bootstrap accepted an option-like Git ref"
+    $credentialUrlRejected = $false
+    try {
+        & (Join-Path $Root "bootstrap.ps1") -DryRun `
+            -Repo "https://user:dummy@example.com/repository.git"
+    } catch {
+        $credentialUrlRejected = $true
+    }
+    Assert-True $credentialUrlRejected "Bootstrap accepted credentials in an HTTPS repository URL"
+    $malformedCredentialUrlRejected = $false
+    try {
+        & (Join-Path $Root "bootstrap.ps1") -DryRun `
+            -Repo "https://user:dummy@/repository.git"
+    } catch {
+        $malformedCredentialUrlRejected = $true
+    }
+    Assert-True $malformedCredentialUrlRejected "Bootstrap accepted malformed HTTPS userinfo"
+
+    $dryCheckout = Join-Path $TempRoot "dry-checkout"
+    $drySentinel = Join-Path $TempRoot "dry-checkout-executed"
+    New-Item -ItemType Directory -Path $dryCheckout | Out-Null
+    Set-Content -LiteralPath (Join-Path $dryCheckout "install.ps1") -Value @'
+Set-Content -LiteralPath $env:UAS_DRY_RUN_SENTINEL -Value "executed"
+'@
+    $env:UAS_DRY_RUN_SENTINEL = $drySentinel
+    & (Join-Path $Root "bootstrap.ps1") -DryRun `
+        -Repo "https://github.com/example/repository.git" -InstallDir $dryCheckout
+    Assert-True (-not (Test-Path $drySentinel)) "Remote dry-run executed an existing checkout"
+    Remove-Item Env:UAS_DRY_RUN_SENTINEL
 
     if ($IsWindows) {
         $fakeClaude = Join-Path $TempRoot "fake-claude.cmd"
@@ -101,7 +211,10 @@ if "%*"=="mcp list --json" echo []
 '@
         Set-Content -LiteralPath $fakeCodex -Value $fakeCodexContent
         $fakeText = Join-Path $TempRoot "fake-text.cmd"
-        Set-Content -LiteralPath $fakeText -Value "@echo off`r`n"
+        Set-Content -LiteralPath $fakeText -Value @'
+@echo off
+if "%*"=="mcp list --json" echo {"mcpServers":{}}
+'@
     } else {
         $fakeCodex = Join-Path $TempRoot "fake-codex"
         $fakeCodexContent = @'
@@ -115,7 +228,12 @@ esac
         Set-Content -LiteralPath $fakeCodex -Value $fakeCodexContent
         & chmod +x $fakeCodex
         $fakeText = Join-Path $TempRoot "fake-text"
-        Set-Content -LiteralPath $fakeText -Value "#!/bin/sh`nexit 0`n"
+        Set-Content -LiteralPath $fakeText -Value @'
+#!/bin/sh
+case "$*" in
+  "mcp list --json") printf '%s\n' '{"mcpServers":{}}' ;;
+esac
+'@
         & chmod +x $fakeText
     }
     $env:UAS_CODEX_COMMAND = $fakeCodex

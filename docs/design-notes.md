@@ -41,4 +41,4 @@ The two plugin formats are not treated as interchangeable. They have separate ma
 
 Rerunning bootstrap fetches the requested branch, tag, or commit and reinstalls. Link mode picks up source changes as soon as the checkout moves. Copy mode refreshes each managed copy atomically.
 
-Release tags or full commits are recommended for stable machines. A `main` ref is useful for a personal rolling channel but is not reproducible.
+Full commits, or release tags protected by repository rules, are recommended for stable machines. A `main` ref is useful for a personal rolling channel but is not reproducible.

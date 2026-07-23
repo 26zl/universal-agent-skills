@@ -108,7 +108,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
-    home = Path(os.environ.get("UAS_HOME", Path.home())).expanduser()
+    home = Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
     target_map = targets(home)
     selected = tuple(dict.fromkeys(args.agent or SUPPORTED_AGENTS))
     drift = False

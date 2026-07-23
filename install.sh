@@ -263,9 +263,12 @@ state_record() {
   [ "$DRY_RUN" -eq 1 ] && return 0
 
   mkdir -p "$STATE_HOME"
-  temp="$STATE_FILE.tmp.$$"
+  temp=$(mktemp "$STATE_HOME/.installed.XXXXXX") || die "cannot create installer state staging file"
   if [ -f "$STATE_FILE" ]; then
-    awk -F '\t' -v target="$target" '$6 != target' "$STATE_FILE" > "$temp"
+    if ! awk -F '\t' -v target="$target" '$6 != target' "$STATE_FILE" > "$temp"; then
+      rm -f -- "$temp"
+      die "cannot update installer state"
+    fi
   else
     : > "$temp"
   fi
@@ -339,26 +342,76 @@ install_one() {
     return 0
   fi
 
-  if [ -e "$target" ] || [ -L "$target" ]; then
-    prepare_target "$target" "$source"
-  fi
-
   parent=$(dirname -- "$target")
   if [ "$DRY_RUN" -eq 1 ]; then
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      prepare_target "$target" "$source"
+    fi
     say "would install [$agent/$MODE]: $skill -> $target"
     return 0
   fi
 
   mkdir -p "$parent"
   if [ "$MODE" = link ]; then
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      prepare_target "$target" "$source"
+    fi
     ln -s "$source" "$target"
   else
-    temp="$parent/.$skill.uas-tmp.$$"
-    rm -rf -- "$temp"
-    mkdir -p "$temp"
-    cp -R "$source/." "$temp/"
-    printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$source" > "$temp/.uas-managed"
-    mv "$temp" "$target"
+    staged=$(mktemp -d "$parent/.$skill.uas-tmp.XXXXXX") || die "cannot create copy staging directory"
+    if ! cp -R "$source/." "$staged/"; then
+      rm -rf -- "$staged"
+      die "cannot stage skill copy: $skill"
+    fi
+    if ! printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$source" > "$staged/.uas-managed"; then
+      rm -rf -- "$staged"
+      die "cannot write ownership marker: $skill"
+    fi
+
+    rollback_dir=
+    backup=
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      if is_owned_target "$target" "$source"; then
+        rollback_dir=$(mktemp -d "$parent/.$skill.uas-old.XXXXXX") || {
+          rm -rf -- "$staged"
+          die "cannot create copy rollback directory"
+        }
+        if ! mv "$target" "$rollback_dir/target"; then
+          rm -rf -- "$staged" "$rollback_dir"
+          die "cannot stage existing managed target for replacement: $target"
+        fi
+      else
+        if [ "$FORCE" -ne 1 ]; then
+          rm -rf -- "$staged"
+          die "refusing to overwrite unmanaged target: $target (use --force to back it up)"
+        fi
+        backup="$target.uas-backup-$(date -u +%Y%m%dT%H%M%SZ).$$"
+        if ! mv "$target" "$backup"; then
+          rm -rf -- "$staged"
+          die "cannot back up unmanaged target: $target"
+        fi
+        say "backed up unmanaged target: $backup"
+      fi
+    fi
+
+    if ! mv "$staged" "$target"; then
+      if [ -n "$rollback_dir" ]; then
+        if mv "$rollback_dir/target" "$target"; then
+          rm -rf -- "$rollback_dir"
+        else
+          warn "failed to restore the previous managed target; recovery data remains in $rollback_dir"
+        fi
+      elif [ -n "$backup" ]; then
+        if ! mv "$backup" "$target"; then
+          warn "failed to restore the unmanaged target; recovery data remains in $backup"
+        fi
+      fi
+      rm -rf -- "$staged"
+      die "cannot activate staged skill copy: $skill"
+    fi
+    if [ -n "$rollback_dir" ]; then
+      rm -rf -- "$rollback_dir"
+    fi
   fi
   say "installed [$agent/$MODE]: $skill"
   state_record "$agent" "$skill" "$MODE" "$source" "$target"
@@ -366,13 +419,17 @@ install_one() {
 
 uninstall_from_state() {
   [ -f "$STATE_FILE" ] || return 1
-  temp="$STATE_FILE.keep.$$"
-  : > "$temp"
+  temp=
+  if [ "$DRY_RUN" -ne 1 ]; then
+    temp=$(mktemp "$STATE_HOME/.installed.keep.XXXXXX") || die "cannot create installer state staging file"
+  fi
 
   while IFS="$(printf '\t')" read -r record_scope agent skill mode source target || [ -n "$target" ]; do
     [ -n "$target" ] || continue
     if [ "$record_scope" != "$SCOPE" ] || ! agent_selected "$agent" || ! skill_selected "$skill"; then
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+      if [ "$DRY_RUN" -ne 1 ]; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+      fi
       continue
     fi
 
@@ -380,20 +437,28 @@ uninstall_from_state() {
     expected="$BASE_DIR/$relative/$skill"
     if [ "$target" != "$expected" ]; then
       warn "state target is outside the expected adapter path; leaving it unchanged: $target"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+      if [ "$DRY_RUN" -ne 1 ]; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+      fi
       continue
     fi
 
     if remove_owned_target "$target" "$source"; then
-      say "removed [$agent]: $skill"
+      if [ "$DRY_RUN" -eq 1 ]; then
+        say "would unregister [$agent]: $skill"
+      else
+        say "removed [$agent]: $skill"
+      fi
     else
       warn "target is no longer owned by this installer; leaving it unchanged: $target"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+      if [ "$DRY_RUN" -ne 1 ]; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+      fi
     fi
   done < "$STATE_FILE"
 
   if [ "$DRY_RUN" -eq 1 ]; then
-    rm -f -- "$temp"
+    :
   elif [ -s "$temp" ]; then
     mv "$temp" "$STATE_FILE"
   else
@@ -414,7 +479,11 @@ if [ "$UNINSTALL" -eq 1 ]; then
       source="$SKILLS_DIR/$skill"
       target="$BASE_DIR/$relative/$skill"
       if remove_owned_target "$target" "$source"; then
-        say "removed [$agent]: $skill"
+        if [ "$DRY_RUN" -eq 1 ]; then
+          say "would unregister [$agent]: $skill"
+        else
+          say "removed [$agent]: $skill"
+        fi
       fi
     done
   done

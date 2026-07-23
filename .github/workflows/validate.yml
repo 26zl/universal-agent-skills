@@ -4,18 +4,43 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  python-minimum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up minimum Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.9"
+
+      - name: Run dependency-free checks
+        run: |
+          python scripts/validate.py
+          python scripts/test_sync_agent_stack.py
+          python scripts/test_sync_instructions.py
+          python scripts/test_sync_opencode_config.py
+          python scripts/test_check_pin_freshness.py
+
   skills:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5

@@ -18,7 +18,7 @@ Before installing a third-party contribution:
 
 ## Bootstrap guidance
 
-Prefer a reviewed clone or a bootstrap URL pinned to an immutable release tag or full commit. A `curl | sh` or downloaded PowerShell one-liner is convenient but executes remote code before the repository scanners can protect the local machine.
+Prefer a reviewed clone or a bootstrap URL pinned to a full commit. A protected release tag is suitable for a release channel but is only immutable when repository rules enforce that property. A `curl | sh` or downloaded PowerShell one-liner is convenient but executes remote code before the repository scanners can protect the local machine.
 
 The installers reduce accidental damage by tracking ownership, rejecting unknown conflicts, using backups for forced replacements, and constraining removals to registered agent paths. They do not make a malicious repository safe.
 

@@ -47,6 +47,20 @@ if ($PSScriptRoot -and
 }
 
 if ($Repo) {
+    if ($Repo.IndexOfAny([char[]]"`r`n`t") -ge 0) {
+        throw "Repository URL must not contain control characters"
+    }
+    if ($Repo -match '^https?://') {
+        $authority = ($Repo -replace '^[^:]+://', '').Split('/')[0]
+        if ($authority.Contains('@')) {
+            throw "Repository URL must not include credentials; use a credential helper or SSH"
+        }
+        $repoUri = $null
+        if (-not [Uri]::TryCreate($Repo, [UriKind]::Absolute, [ref]$repoUri) -or
+            $repoUri.Scheme -notin @("http", "https") -or -not $repoUri.Host) {
+            throw "Repository URL is malformed"
+        }
+    }
     $secure = $Repo -match '^(https://|ssh://|git@[^:]+:)'
     if (-not $secure -and -not $AllowInsecureRepo) {
         throw "Repository URL must use HTTPS or SSH"
@@ -55,7 +69,7 @@ if ($Repo) {
 
     if ($DryRun) {
         Write-Information "would sync $Repo at $Ref into $InstallDir" -InformationAction Continue
-        if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { exit 0 }
+        exit 0
     } else {
         $parent = Split-Path -Parent $InstallDir
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
@@ -74,8 +88,9 @@ if ($Repo) {
             & git -C $InstallDir checkout --detach --force FETCH_HEAD
             if ($LASTEXITCODE -ne 0) { throw "git checkout failed" }
         } else {
-            $temp = Join-Path $parent ".repo.uas-tmp.$PID"
+            $temp = Join-Path $parent ".repo.uas-tmp.$([Guid]::NewGuid().ToString('N'))"
             try {
+                New-Item -ItemType Directory -Path $temp | Out-Null
                 & git init -q $temp
                 if ($LASTEXITCODE -ne 0) { throw "git init failed" }
                 & git -C $temp remote add origin $Repo
@@ -128,7 +143,11 @@ if ($WithAgentStack -or $UpdateAgentStack -or $IncludeSensitivePlugins) {
         $python = "py"
         $pythonPrefix = @("-3")
     } else {
-        throw "Python 3 is required for agent stack sync"
+        throw "Python 3.9 or newer is required for agent stack sync"
+    }
+    & $python @pythonPrefix -c "import sys; raise SystemExit(sys.version_info < (3, 9))"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python 3.9 or newer is required for agent stack sync"
     }
 
     $syncScript = Join-Path $LocalRoot "scripts/sync_agent_stack.py"

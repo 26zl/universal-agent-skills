@@ -98,15 +98,29 @@ if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/install.sh" ] && [ -d "$SCRIPT_DIR/
 fi
 
 if [ -n "$REPO" ]; then
+  if printf '%s' "$REPO" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    die "repository URL must not contain control characters"
+  fi
   case "$REPO" in
-    https://*|ssh://*|git@*:*) ;;
+    https://*|http://*)
+      authority=${REPO#*://}
+      authority=${authority%%/*}
+      case "$authority" in
+        *@*) die "repository URL must not include credentials; use a credential helper or SSH" ;;
+      esac
+      case "$REPO" in
+        https://*) ;;
+        *) [ "$ALLOW_INSECURE" -eq 1 ] || die "repository URL must use HTTPS or SSH" ;;
+      esac
+      ;;
+    ssh://*|git@*:*) ;;
     *) [ "$ALLOW_INSECURE" -eq 1 ] || die "repository URL must use HTTPS or SSH" ;;
   esac
   command -v git >/dev/null 2>&1 || die "git is required"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     printf 'would sync %s at %s into %s\n' "$REPO" "$REF" "$INSTALL_DIR"
-    [ -d "$INSTALL_DIR" ] || exit 0
+    exit 0
   else
     parent=$(dirname -- "$INSTALL_DIR")
     mkdir -p "$parent"
@@ -118,7 +132,7 @@ if [ -n "$REPO" ]; then
       git -C "$INSTALL_DIR" fetch --depth 1 origin "$REF"
       git -C "$INSTALL_DIR" checkout --detach --force FETCH_HEAD
     else
-      temp="$parent/.repo.uas-tmp.$$"
+      temp=$(mktemp -d "$parent/.repo.uas-tmp.XXXXXX") || die "cannot create checkout staging directory"
       trap 'rm -rf -- "$temp"' 0 HUP INT TERM
       git init -q "$temp"
       git -C "$temp" remote add origin "$REPO"
@@ -153,7 +167,9 @@ fi
 sh "$LOCAL_ROOT/install.sh" "$@"
 
 if [ "$SYNC_AGENT_STACK" -eq 1 ]; then
-  command -v python3 >/dev/null 2>&1 || die "python3 is required for agent stack sync"
+  command -v python3 >/dev/null 2>&1 || die "Python 3.9 or newer is required for agent stack sync"
+  python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 9))' ||
+    die "Python 3.9 or newer is required for agent stack sync"
   set -- "$LOCAL_ROOT/scripts/sync_agent_stack.py"
   [ "$DRY_RUN" -eq 0 ] && set -- "$@" --apply
   [ "$UPDATE_AGENT_STACK" -eq 1 ] && set -- "$@" --update

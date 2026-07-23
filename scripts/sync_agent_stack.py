@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+
+import sync_instructions as instruction_sync
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +81,7 @@ def normalize_source(value: str) -> str:
     source = value.strip().lower()
     if source.startswith("git@github.com:"):
         source = source.removeprefix("git@github.com:")
-    for prefix in ("git+https://github.com/", "https://github.com/", "http://github.com/"):
+    for prefix in ("git+https://github.com/", "https://github.com/"):
         if source.startswith(prefix):
             source = source.removeprefix(prefix)
             break
@@ -285,7 +288,11 @@ def validate_profile(profile: dict[str, Any]) -> list[str]:
         agents = server.get("agents")
         if not isinstance(agents, list) or not agents:
             errors.append(f"{prefix}.agents must be a non-empty array")
-        elif len(set(agents)) != len(agents) or not set(agents) <= ALLOWED_MCP_AGENTS:
+        elif (
+            not all(isinstance(agent, str) for agent in agents)
+            or len(set(agents)) != len(agents)
+            or not set(agents) <= ALLOWED_MCP_AGENTS
+        ):
             errors.append(f"{prefix}.agents contains duplicates or unsupported agents")
         errors.extend(validate_risk_reason(prefix, server))
 
@@ -348,7 +355,11 @@ def validate_profile(profile: dict[str, Any]) -> list[str]:
         agents = skill.get("agents")
         if not isinstance(agents, list) or not agents:
             errors.append(f"{prefix}.agents must be a non-empty array")
-        elif len(set(agents)) != len(agents) or not set(agents) <= ALLOWED_SKILL_AGENTS:
+        elif (
+            not all(isinstance(agent, str) for agent in agents)
+            or len(set(agents)) != len(agents)
+            or not set(agents) <= ALLOWED_SKILL_AGENTS
+        ):
             errors.append(f"{prefix}.agents contains duplicates or unsupported agents")
         if skill.get("scope") != "global":
             errors.append(f"{prefix}.scope must be global")
@@ -432,15 +443,145 @@ def source_matches(current: str, desired: dict[str, Any]) -> bool:
     return any(normalized == normalize_source(candidate) for candidate in allowed)
 
 
+def codex_marketplace_revision(
+    marketplace: dict[str, Any], git_command: str = "git"
+) -> str | None:
+    root_value = marketplace.get("root")
+    if not isinstance(root_value, str) or not root_value:
+        return None
+    root = Path(root_value)
+    metadata_path = root / ".codex-marketplace-install.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        revision = metadata.get("revision") if isinstance(metadata, dict) else None
+        head = subprocess.run(
+            [
+                git_command,
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-C",
+                str(root),
+                "rev-parse",
+                "HEAD",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            [
+                git_command,
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-C",
+                str(root),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (
+        FileNotFoundError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        subprocess.CalledProcessError,
+    ):
+        return None
+    unexpected_status = [
+        line
+        for line in status.splitlines()
+        if line != "?? .codex-marketplace-install.json"
+    ]
+    if not isinstance(revision, str) or revision != head or unexpected_status:
+        return None
+    return revision
+
+
+def codex_plugin_revision(
+    plugin: dict[str, Any],
+    marketplace: dict[str, Any],
+    git_command: str = "git",
+) -> str | None:
+    root_value = marketplace.get("root")
+    name = plugin.get("name")
+    market_name = plugin.get("marketplaceName")
+    version = plugin.get("version")
+    source_data = marketplace.get("marketplaceSource")
+    source = source_data.get("source") if isinstance(source_data, dict) else None
+    if (
+        not isinstance(root_value, str)
+        or not isinstance(name, str)
+        or not NAME_RE.fullmatch(name)
+        or not isinstance(market_name, str)
+        or not NAME_RE.fullmatch(market_name)
+        or not isinstance(version, str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", version) is None
+        or not isinstance(source, str)
+    ):
+        return None
+    root = Path(root_value)
+    if len(root.parents) < 3:
+        return None
+    cache = root.parents[2] / "plugins" / "cache" / market_name / name / version
+    if not cache.is_dir() or not (cache / ".git").is_dir():
+        return None
+    git_prefix = [
+        git_command,
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-C",
+        str(cache),
+    ]
+    try:
+        head = subprocess.run(
+            [*git_prefix, "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            [*git_prefix, "status", "--porcelain", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        origin = subprocess.run(
+            [*git_prefix, "remote", "get-url", "origin"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (
+        FileNotFoundError,
+        OSError,
+        UnicodeError,
+        subprocess.CalledProcessError,
+    ):
+        return None
+    if status or normalize_source(origin) != normalize_source(source):
+        return None
+    return head
+
+
 def source_cache_root() -> Path:
     override = os.environ.get("UAS_SOURCE_CACHE")
     if override:
         return Path(override).expanduser()
-    home = Path(os.environ.get("UAS_HOME", Path.home())).expanduser()
+    home = Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
     if os.name == "nt":
-        data_home = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+        data_home = Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local")
     else:
-        data_home = Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
+        data_home = Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
     return data_home / "universal-agent-skills" / "sources"
 
 
@@ -474,16 +615,25 @@ def build_claude_plan(
     desired_markets = {
         item["name"]: item for item in profile["claude"].get("marketplaces", [])
     }
-    current_markets = {item.get("name"): item for item in current_marketplaces}
-    current_plugin_map = {
-        item["id"]: item for item in current_plugins if item.get("id")
-    }
+    current_markets: dict[str, dict[str, Any]] = {}
+    for item in current_marketplaces:
+        name = item.get("name")
+        if not isinstance(name, str) or not name:
+            raise RuntimeError("Claude marketplace inventory contains an invalid name")
+        current_markets[name] = item
+    current_plugin_map: dict[str, dict[str, Any]] = {}
+    for item in current_plugins:
+        plugin_id = item.get("id")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise RuntimeError("Claude plugin inventory contains an invalid id")
+        current_plugin_map[plugin_id] = item
     desired_plugins = profile["claude"].get("plugins", [])
 
     active_plugins = [
         item
         for item in desired_plugins
-        if include_sensitive or not item.get("requiresExplicitOptIn", False)
+        if item["enabled"]
+        and (include_sensitive or not item.get("requiresExplicitOptIn", False))
     ]
     active_market_names = {item["id"].rsplit("@", 1)[1] for item in active_plugins}
     blocked_markets: set[str] = set()
@@ -531,6 +681,26 @@ def build_claude_plan(
         market_name = plugin_id.rsplit("@", 1)[1]
         sensitive_blocked = plugin.get("requiresExplicitOptIn", False) and not include_sensitive
         current = current_plugin_map.get(plugin_id)
+        if not plugin["enabled"]:
+            if current is not None:
+                if current.get("enabled") is True:
+                    drift.append(f"Claude plugin should be disabled: {plugin_id}")
+                    actions.append(
+                        Action(
+                            f"disable Claude plugin {plugin_id}",
+                            (
+                                claude_command,
+                                "plugin",
+                                "disable",
+                                plugin_id,
+                                "--scope",
+                                "user",
+                            ),
+                        )
+                    )
+                else:
+                    notices.append(f"desired plugin is disabled: {plugin_id}")
+            continue
         if current is None:
             if sensitive_blocked:
                 notices.append(
@@ -587,14 +757,30 @@ def build_codex_plan(
     drift: list[str] = []
     blocking: list[str] = []
     blocked_markets: set[str] = set()
+    replaced_markets: set[str] = set()
     desired = profile["codex"]
-    current_markets = {item.get("name"): item for item in current_marketplaces}
+    desired_markets = {
+        item["name"]: item for item in desired.get("marketplaces", [])
+    }
+    current_markets: dict[str, dict[str, Any]] = {}
+    for item in current_marketplaces:
+        name = item.get("name")
+        source_data = item.get("marketplaceSource")
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(source_data, dict)
+            or not isinstance(source_data.get("source"), str)
+        ):
+            raise RuntimeError("Codex marketplace inventory is malformed")
+        current_markets[name] = item
 
-    for marketplace in desired.get("marketplaces", []):
+    for marketplace in desired_markets.values():
         name = marketplace["name"]
         current = current_markets.get(name)
         if current is None:
             drift.append(f"missing Codex marketplace: {name}")
+            replaced_markets.add(name)
             actions.append(
                 Action(
                     f"add Codex marketplace {name}",
@@ -610,7 +796,8 @@ def build_codex_plan(
                 )
             )
             continue
-        source = str(current.get("marketplaceSource", {}).get("source", ""))
+        source_data = current["marketplaceSource"]
+        source = source_data["source"]
         if not source_matches(source, marketplace):
             message = (
                 f"Codex marketplace {name} uses {source!r}, expected "
@@ -619,26 +806,68 @@ def build_codex_plan(
             drift.append(message)
             blocking.append(message)
             blocked_markets.add(name)
-        elif update:
-            actions.append(
+            continue
+        revision = codex_marketplace_revision(current)
+        if revision == marketplace["ref"]:
+            continue
+        displayed_revision = repr(revision) if revision else "an unverified revision"
+        message = (
+            f"Codex marketplace {name} uses {displayed_revision}, expected revision "
+            f"{marketplace['ref']}"
+        )
+        drift.append(message)
+        if not update:
+            blocking.append(f"{message}; rerun with --update to replace it")
+            blocked_markets.add(name)
+            continue
+        replaced_markets.add(name)
+        actions.extend(
+            (
                 Action(
-                    f"refresh pinned Codex marketplace {name}",
-                    (codex_command, "plugin", "marketplace", "upgrade", name),
+                    f"remove outdated Codex marketplace {name}",
+                    (codex_command, "plugin", "marketplace", "remove", name),
+                ),
+                Action(
+                    f"add pinned Codex marketplace {name}",
+                    (
+                        codex_command,
+                        "plugin",
+                        "marketplace",
+                        "add",
+                        marketplace["source"],
+                        "--ref",
+                        marketplace["ref"],
+                    ),
                 )
             )
+        )
 
-    current_plugin_map = {
-        item["pluginId"]: item
-        for item in current_plugins
-        if item.get("installed") and item.get("pluginId")
-    }
+    current_plugin_map: dict[str, dict[str, Any]] = {}
+    for item in current_plugins:
+        plugin_id = item.get("pluginId")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise RuntimeError("Codex plugin inventory contains an invalid pluginId")
+        if item.get("installed") is True:
+            current_plugin_map[plugin_id] = item
     for plugin in desired.get("plugins", []):
         plugin_id = plugin["id"]
+        marketplace_name = plugin_id.rsplit("@", 1)[1]
         current = current_plugin_map.get(plugin_id)
+        if not plugin["enabled"]:
+            if current is not None:
+                if current.get("enabled") is True:
+                    message = (
+                        f"Codex plugin is active but disabled in the profile: {plugin_id}; "
+                        "disable or remove it manually"
+                    )
+                    drift.append(message)
+                    blocking.append(message)
+                else:
+                    notices.append(f"desired plugin is disabled: {plugin_id}")
+            continue
         if current is None:
             drift.append(f"missing Codex plugin: {plugin_id}")
-            marketplace = plugin_id.rsplit("@", 1)[1]
-            if marketplace in blocked_markets:
+            if marketplace_name in blocked_markets:
                 continue
             actions.append(
                 Action(
@@ -646,7 +875,53 @@ def build_codex_plan(
                     (codex_command, "plugin", "add", plugin_id),
                 )
             )
-        elif plugin["enabled"] and not current.get("enabled", False):
+            continue
+        if marketplace_name in replaced_markets:
+            actions.extend(
+                (
+                    Action(
+                        f"remove outdated Codex plugin {plugin_id}",
+                        (codex_command, "plugin", "remove", plugin_id),
+                    ),
+                    Action(
+                        f"install Codex plugin {plugin_id} from the pinned marketplace",
+                        (codex_command, "plugin", "add", plugin_id),
+                    ),
+                )
+            )
+            continue
+        desired_market = desired_markets.get(marketplace_name)
+        current_market = current_markets.get(marketplace_name)
+        if desired_market is not None and current_market is not None:
+            plugin_revision = codex_plugin_revision(current, current_market)
+            if plugin_revision != desired_market["ref"]:
+                displayed = (
+                    repr(plugin_revision)
+                    if plugin_revision
+                    else "an unverified revision"
+                )
+                message = (
+                    f"Codex plugin {plugin_id} uses {displayed}, expected revision "
+                    f"{desired_market['ref']}"
+                )
+                drift.append(message)
+                if not update:
+                    blocking.append(f"{message}; rerun with --update to reinstall it")
+                    continue
+                actions.extend(
+                    (
+                        Action(
+                            f"remove outdated Codex plugin {plugin_id}",
+                            (codex_command, "plugin", "remove", plugin_id),
+                        ),
+                        Action(
+                            f"reinstall Codex plugin {plugin_id}",
+                            (codex_command, "plugin", "add", plugin_id),
+                        ),
+                    )
+                )
+                continue
+        if not current.get("enabled", False):
             message = f"Codex plugin is installed but disabled: {plugin_id}"
             drift.append(message)
             blocking.append(message)
@@ -703,6 +978,15 @@ def build_copilot_plan(
         plugin_id = plugin["id"]
         plugin_name = plugin_id.split("@", 1)[0]
         installed = plugin_id.lower() in plugin_output.lower()
+        if not plugin["enabled"]:
+            if installed:
+                message = (
+                    f"Copilot CLI plugin is installed but disabled in the profile: "
+                    f"{plugin_id}; uninstall it manually"
+                )
+                drift.append(message)
+                blocking.append(message)
+            continue
         if not installed:
             drift.append(f"missing Copilot CLI plugin: {plugin_id}")
             actions.append(
@@ -722,11 +1006,26 @@ def build_copilot_plan(
 
 
 def opencode_config_path() -> Path:
-    home = Path(os.environ.get("UAS_HOME", Path.home())).expanduser()
-    config_home = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    home = Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
     jsonc = config_home / "opencode" / "opencode.jsonc"
     plain = config_home / "opencode" / "opencode.json"
     return jsonc if jsonc.exists() or not plain.exists() else plain
+
+
+def opencode_plugin_entries(config_text: str) -> list[str]:
+    try:
+        value = json.loads(jsonc_to_json(config_text)) if config_text.strip() else {}
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("OpenCode config contains invalid JSONC") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("OpenCode config must be a JSON object")
+    entries = value.get("plugin", [])
+    if not isinstance(entries, list) or not all(
+        isinstance(entry, str) for entry in entries
+    ):
+        raise RuntimeError("OpenCode config 'plugin' value must be a string array")
+    return entries
 
 
 def build_opencode_plan(
@@ -739,18 +1038,22 @@ def build_opencode_plan(
     actions: list[Action] = []
     drift: list[str] = []
     notices: list[str] = []
+    entries = opencode_plugin_entries(config_text)
     for plugin in profile["opencode"].get("plugins", []):
         package = plugin["package"]
         pinned = f"{package}@{plugin['version']}"
-        if pinned in config_text:
+        if pinned in entries:
             continue
-        if package in config_text and not update:
+        unpinned = any(
+            entry == package or entry.startswith(f"{package}@") for entry in entries
+        )
+        if unpinned and not update:
             drift.append(f"OpenCode plugin is not pinned to {plugin['version']}: {package}")
             notices.append(f"pass --update to replace the OpenCode plugin pin for {package}")
             continue
         drift.append(f"missing or outdated OpenCode plugin: {pinned}")
         command = [opencode_command, "plugin", pinned, "--global"]
-        if package in config_text:
+        if unpinned:
             command.append("--force")
         actions.append(Action(f"install OpenCode plugin {pinned}", tuple(command)))
     return Plan(actions, notices, drift, [])
@@ -771,7 +1074,7 @@ def build_native_installer_actions(
     home: Path | None = None,
 ) -> list[Action]:
     actions: list[Action] = []
-    resolved_home = home or Path(os.environ.get("UAS_HOME", Path.home())).expanduser()
+    resolved_home = home or Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
     for installer in profile.get("nativeInstallers", []):
         state_path = resolved_home / installer["statePath"]
         try:
@@ -814,6 +1117,20 @@ def build_native_installer_actions(
             )
         )
     return actions
+
+
+def build_native_plan(
+    profile: dict[str, Any],
+    npx_command: str = "npx",
+    home: Path | None = None,
+) -> Plan:
+    actions = build_native_installer_actions(profile, npx_command, home)
+    drift = [
+        f"native integration differs from the profile: "
+        f"{action.label.removeprefix('ensure native integration ')}"
+        for action in actions
+    ]
+    return Plan(actions, [], drift, [])
 
 
 def build_vscode_plan(
@@ -888,13 +1205,16 @@ def build_mcp_plan(
     drift: list[str] = []
     blocking: list[str] = []
     conflicts = conflicting_names or {}
+    configure_opencode = False
+    update_opencode = False
     for server in profile.get("mcpServers", []):
         for agent in server["agents"]:
             name = server["name"]
-            if name.lower() in current_names.get(agent, set()):
+            is_conflict = name.lower() in conflicts.get(agent, set())
+            if not is_conflict and name.lower() in current_names.get(agent, set()):
                 continue
             executable = commands[agent]
-            if name.lower() in conflicts.get(agent, set()):
+            if is_conflict:
                 drift.append(f"{agent} MCP server differs from the profile: {name}")
                 if not update:
                     blocking.append(
@@ -902,14 +1222,19 @@ def build_mcp_plan(
                         "rerun with --update to replace it"
                     )
                     continue
-                actions.append(
-                    Action(
-                        f"remove outdated {agent} MCP server {name}",
-                        (executable, "mcp", "remove", name),
+                if agent != "opencode":
+                    actions.append(
+                        Action(
+                            f"remove outdated {agent} MCP server {name}",
+                            (executable, "mcp", "remove", name),
+                        )
                     )
-                )
             else:
                 drift.append(f"missing {agent} MCP server: {name}")
+            if agent == "opencode":
+                configure_opencode = True
+                update_opencode = update_opencode or is_conflict
+                continue
             if server["transport"] == "http":
                 if agent == "copilot":
                     command = (
@@ -948,38 +1273,266 @@ def build_mcp_plan(
                     "--",
                     *server["command"],
                 )
-            elif agent == "opencode":
-                command = (
-                    sys.executable,
-                    str(ROOT / "scripts" / "sync_opencode_config.py"),
-                    "--profile",
-                    str(profile_path),
-                    "--apply",
-                )
             else:
                 raise ValueError(f"stdio MCP automation is unsupported for {agent}")
             actions.append(Action(f"configure {agent} MCP server {name}", command))
+    if configure_opencode:
+        command = [
+            sys.executable,
+            str(ROOT / "scripts" / "sync_opencode_config.py"),
+            "--profile",
+            str(profile_path),
+            "--apply",
+        ]
+        if update_opencode:
+            command.append("--update")
+        actions.append(
+            Action("configure OpenCode MCP servers from the profile", tuple(command))
+        )
     return Plan(actions, [], drift, blocking)
 
 
-def names_from_text(output: str, expected: set[str]) -> set[str]:
-    lowered = output.lower()
-    return {name.lower() for name in expected if name.lower() in lowered}
-
-
 def codex_mcp_matches(server: dict[str, Any], current: dict[str, Any]) -> bool:
+    allowed_current = {
+        "name",
+        "enabled",
+        "disabled_reason",
+        "transport",
+        "startup_timeout_sec",
+        "tool_timeout_sec",
+        "auth_status",
+    }
+    if set(current) - allowed_current or current.get("enabled") is not True:
+        return False
+    if current.get("startup_timeout_sec") is not None:
+        return False
+    if current.get("tool_timeout_sec") is not None:
+        return False
     transport = current.get("transport")
     if not isinstance(transport, dict):
         return False
     if server["transport"] == "http":
+        allowed = {
+            "type",
+            "url",
+            "bearer_token_env_var",
+            "http_headers",
+            "env_http_headers",
+        }
         return (
-            transport.get("type") == "streamable_http"
+            not set(transport) - allowed
+            and transport.get("type") == "streamable_http"
             and transport.get("url") == server["url"]
+            and transport.get("bearer_token_env_var") is None
+            and transport.get("http_headers") in (None, {})
+            and transport.get("env_http_headers") in (None, {})
         )
+    allowed = {"type", "command", "args", "env", "env_vars", "cwd"}
     return (
-        transport.get("type") == "stdio"
+        not set(transport) - allowed
+        and transport.get("type") == "stdio"
         and transport.get("command") == server["command"][0]
         and transport.get("args") == server["command"][1:]
+        and transport.get("env") in (None, {})
+        and transport.get("env_vars") in (None, [])
+        and transport.get("cwd") is None
+    )
+
+
+def opencode_mcp_matches(server: dict[str, Any], current: dict[str, Any]) -> bool:
+    if current.get("enabled") is not True:
+        return False
+    if server["transport"] == "http":
+        return (
+            not set(current) - {"type", "url", "enabled"}
+            and current.get("type") == "remote"
+            and current.get("url") == server["url"]
+        )
+    return (
+        not set(current) - {"type", "command", "enabled"}
+        and current.get("type") == "local"
+        and current.get("command") == server["command"]
+    )
+
+
+def copilot_mcp_matches(server: dict[str, Any], current: dict[str, Any]) -> bool:
+    if current.get("enabled") is not True:
+        return False
+    allowed_metadata = {"enabled", "tools", "source"}
+    if current.get("tools", ["*"]) != ["*"]:
+        return False
+    if server["transport"] == "http":
+        return (
+            not set(current) - (allowed_metadata | {"type", "url"})
+            and current.get("type") in {"http", "remote"}
+            and current.get("url") == server["url"]
+        )
+    return (
+        not set(current) - (allowed_metadata | {"type", "command", "args"})
+        and current.get("type") == "local"
+        and current.get("command") == server["command"][0]
+        and current.get("args") == server["command"][1:]
+    )
+
+
+def mcp_inventory(
+    profile: dict[str, Any],
+    agent: str,
+    current_servers: dict[str, Any],
+    matcher,
+) -> tuple[set[str], set[str]]:
+    desired = {
+        server["name"]: server
+        for server in profile.get("mcpServers", [])
+        if agent in server["agents"]
+    }
+    matching: set[str] = set()
+    conflicting: set[str] = set()
+    for name, server in desired.items():
+        entries = [
+            value
+            for key, value in current_servers.items()
+            if str(key).lower() == name.lower()
+        ]
+        if not entries:
+            continue
+        if (
+            len(entries) == 1
+            and isinstance(entries[0], dict)
+            and matcher(server, entries[0])
+        ):
+            matching.add(name.lower())
+        else:
+            conflicting.add(name.lower())
+    return matching, conflicting
+
+
+def jsonc_to_json(text: str) -> str:
+    characters = list(text)
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(characters):
+        character = characters[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            index += 1
+            continue
+        if character == "/" and index + 1 < len(characters):
+            following = characters[index + 1]
+            if following == "/":
+                characters[index] = characters[index + 1] = " "
+                index += 2
+                while index < len(characters) and characters[index] not in "\r\n":
+                    characters[index] = " "
+                    index += 1
+                continue
+            if following == "*":
+                characters[index] = characters[index + 1] = " "
+                index += 2
+                while index + 1 < len(characters):
+                    if characters[index] == "*" and characters[index + 1] == "/":
+                        characters[index] = characters[index + 1] = " "
+                        index += 2
+                        break
+                    if characters[index] not in "\r\n":
+                        characters[index] = " "
+                    index += 1
+                else:
+                    raise ValueError("unterminated JSONC block comment")
+                continue
+        index += 1
+
+    in_string = False
+    escaped = False
+    for index, character in enumerate(characters):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+            continue
+        if character != ",":
+            continue
+        following = index + 1
+        while following < len(characters) and characters[following].isspace():
+            following += 1
+        if following < len(characters) and characters[following] in "]}":
+            characters[index] = " "
+    return "".join(characters)
+
+
+def opencode_mcp_inventory(
+    profile: dict[str, Any], config_text: str
+) -> tuple[set[str], set[str]]:
+    try:
+        value = json.loads(jsonc_to_json(config_text)) if config_text else {}
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("OpenCode config contains invalid JSONC") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("OpenCode config must be a JSON object")
+    current = value.get("mcp", {})
+    if not isinstance(current, dict):
+        raise RuntimeError("OpenCode config 'mcp' value must be an object")
+    return mcp_inventory(profile, "opencode", current, opencode_mcp_matches)
+
+
+def guard_jsonc_opencode_plan(
+    plan: Plan,
+    profile: dict[str, Any],
+    current_names: set[str],
+    conflicting_names: set[str],
+    config_text: str,
+) -> Plan:
+    if not config_text:
+        return plan
+    try:
+        json.loads(config_text)
+        return plan
+    except json.JSONDecodeError:
+        pass
+    desired_names = {
+        server["name"].lower()
+        for server in profile.get("mcpServers", [])
+        if "opencode" in server["agents"]
+    }
+    if not conflicting_names and desired_names <= current_names:
+        return plan
+    actions = [
+        action
+        for action in plan.actions
+        if not any(
+            part.endswith("sync_opencode_config.py") for part in action.command
+        )
+    ]
+    message = (
+        "OpenCode MCP drift requires a manual JSONC-preserving merge; "
+        "automatic apply supports plain JSON only"
+    )
+    return Plan(actions, [*plan.notices, message], plan.drift, [*plan.blocking, message])
+
+
+def copilot_mcp_inventory(
+    profile: dict[str, Any], value: Any
+) -> tuple[set[str], set[str]]:
+    if not isinstance(value, dict) or not isinstance(value.get("mcpServers"), dict):
+        raise RuntimeError("Copilot MCP list returned an unexpected JSON shape")
+    return mcp_inventory(
+        profile, "copilot", value["mcpServers"], copilot_mcp_matches
     )
 
 
@@ -1019,6 +1572,211 @@ def build_portable_skill_actions(
             )
         )
     return actions
+
+
+def pinned_checkout_issue(
+    checkout: PinnedCheckout, git_command: str = "git"
+) -> str | None:
+    target = checkout.path
+    if not target.exists() and not target.is_symlink():
+        return "cache is missing"
+    if not target.is_dir() or not (target / ".git").is_dir():
+        return "cache path is unmanaged"
+    try:
+        head = subprocess.run(
+            [
+                git_command,
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-C",
+                str(target),
+                "rev-parse",
+                "HEAD",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            [
+                git_command,
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-C",
+                str(target),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        origin = subprocess.run(
+            [
+                git_command,
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-C",
+                str(target),
+                "remote",
+                "get-url",
+                "origin",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (
+        FileNotFoundError,
+        OSError,
+        UnicodeError,
+        subprocess.CalledProcessError,
+    ):
+        return "cache cannot be verified"
+    if head != checkout.commit:
+        return f"cache has unexpected commit {head!r}"
+    if status:
+        return "cache has local changes"
+    if normalize_source(origin) != normalize_source(checkout.repository):
+        return f"cache has unexpected origin {origin!r}"
+    return None
+
+
+def frontmatter_skill_name(path: Path) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    lines = text.splitlines()
+    if not lines or lines[0] != "---":
+        return None
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        return None
+    for line in lines[1:end]:
+        match = re.fullmatch(
+            r"name:\s*([a-z0-9]+(?:-[a-z0-9]+)*)\s*", line
+        )
+        if match:
+            return match.group(1)
+    return None
+
+
+def portable_skill_source(checkout: PinnedCheckout, name: str) -> Path | None:
+    candidates = [
+        skill_file.parent
+        for skill_file in checkout.path.rglob("SKILL.md")
+        if frontmatter_skill_name(skill_file) == name
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def directory_snapshot(path: Path) -> dict[str, tuple[str, str]]:
+    snapshot: dict[str, tuple[str, str]] = {}
+    for entry in path.rglob("*"):
+        relative = entry.relative_to(path)
+        if ".git" in relative.parts:
+            continue
+        key = relative.as_posix()
+        if entry.is_symlink():
+            snapshot[key] = ("link", os.readlink(entry))
+        elif entry.is_dir():
+            snapshot[key] = ("directory", "")
+        elif entry.is_file():
+            snapshot[key] = ("file", hashlib.sha256(entry.read_bytes()).hexdigest())
+        else:
+            snapshot[key] = ("other", "")
+    return snapshot
+
+
+def build_portable_skill_plan(
+    profile: dict[str, Any],
+    npx_command: str = "npx",
+    cache_root: Path | None = None,
+    home: Path | None = None,
+) -> Plan:
+    resolved_cache = cache_root or source_cache_root()
+    resolved_home = home or Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
+    planned_actions = build_portable_skill_actions(
+        profile, npx_command, resolved_cache
+    )
+    actions: list[Action] = []
+    drift: list[str] = []
+    blocking: list[str] = []
+    for skill, action in zip(profile.get("portableSkills", []), planned_actions):
+        name = skill["name"]
+        checkout = action.checkout
+        if checkout is None:
+            raise RuntimeError(f"portable skill has no pinned checkout: {name}")
+        issue = pinned_checkout_issue(checkout)
+        if issue == "cache is missing":
+            drift.append(f"portable skill {name} {issue}")
+            actions.append(action)
+            continue
+        if issue:
+            message = f"portable skill {name} {issue}"
+            drift.append(message)
+            blocking.append(message)
+            continue
+        source = portable_skill_source(checkout, name)
+        if source is None:
+            message = f"portable skill {name} source cannot be identified uniquely"
+            drift.append(message)
+            blocking.append(message)
+            continue
+        target = resolved_home / ".agents" / "skills" / name
+        try:
+            if target.is_symlink():
+                matches = target.resolve() == source.resolve()
+            else:
+                matches = (
+                    target.is_dir()
+                    and directory_snapshot(target) == directory_snapshot(source)
+                )
+        except OSError as exc:
+            message = f"portable skill {name} cannot be verified: {exc}"
+            drift.append(message)
+            blocking.append(message)
+            continue
+        if not matches:
+            drift.append(f"portable skill differs from the pinned source: {name}")
+            actions.append(action)
+    return Plan(actions, [], drift, blocking)
+
+
+def build_instruction_plan(home: Path | None = None) -> Plan:
+    resolved_home = home or Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
+    drift: list[str] = []
+    for target in instruction_sync.targets(resolved_home).values():
+        try:
+            current = (
+                target.path.read_text(encoding="utf-8") if target.path.exists() else ""
+            )
+            _, changed = instruction_sync.replace_block(current, uninstall=False)
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise RuntimeError(f"cannot audit {target.agent} instructions: {exc}") from exc
+        if changed:
+            drift.append(f"global instructions differ for {target.agent}")
+    actions: list[Action] = []
+    if drift:
+        actions.append(
+            Action(
+                "ensure global comment instructions",
+                (
+                    sys.executable,
+                    str(ROOT / "scripts" / "sync_instructions.py"),
+                    "--apply",
+                ),
+                (("UAS_HOME", str(resolved_home)),),
+            )
+        )
+    return Plan(actions, [], drift, [])
 
 
 def run_output(command: list[str]) -> str:
@@ -1066,34 +1824,9 @@ def run_checked(command: list[str], *, environment: dict[str, str] | None = None
 def ensure_pinned_checkout(checkout: PinnedCheckout, git_command: str = "git") -> None:
     target = checkout.path
     if target.exists() or target.is_symlink():
-        if not target.is_dir() or not (target / ".git").is_dir():
-            raise RuntimeError(f"refusing unmanaged portable-skill cache path: {target}")
-        try:
-            result = subprocess.run(
-                [git_command, "-C", str(target), "rev-parse", "HEAD"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            status = subprocess.run(
-                [
-                    git_command,
-                    "-C",
-                    str(target),
-                    "status",
-                    "--porcelain",
-                    "--untracked-files=all",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-            raise RuntimeError(f"cannot verify portable-skill cache: {target}") from exc
-        if result.stdout.strip() != checkout.commit:
-            raise RuntimeError(f"portable-skill cache has unexpected commit: {target}")
-        if status.stdout.strip():
-            raise RuntimeError(f"portable-skill cache has local changes: {target}")
+        issue = pinned_checkout_issue(checkout, git_command)
+        if issue:
+            raise RuntimeError(f"portable-skill {issue}: {target}")
         return
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1192,7 +1925,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
         help="Limit reconciliation to a component; repeat to select more than one",
     )
-    parser.add_argument("--check", action="store_true", help="Exit non-zero when Claude state drifts")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero when selected stack state drifts",
+    )
     parser.add_argument("--validate-only", action="store_true", help="Validate the profile without tools")
     parser.add_argument(
         "--claude-command",
@@ -1264,10 +2001,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         native_actions: list[Action] = []
         if "native" in components:
-            if args.apply and shutil.which(args.npx_command) is None:
+            native_plan = build_native_plan(profile, args.npx_command)
+            native_actions = native_plan.actions
+            if (
+                args.apply
+                and native_actions
+                and shutil.which(args.npx_command) is None
+            ):
                 raise RuntimeError(f"required command not found: {args.npx_command}")
-            native_actions = build_native_installer_actions(profile, args.npx_command)
-            plans.append(Plan(native_actions, [], [], []))
+            plans.append(native_plan)
         native_resets_codex = any(
             action.label == "ensure native integration ecc-codex"
             for action in native_actions
@@ -1371,7 +2113,6 @@ def main(argv: list[str] | None = None) -> int:
             for agent in required_mcp_agents:
                 if shutil.which(mcp_commands[agent]) is None:
                     raise RuntimeError(f"required command not found: {mcp_commands[agent]}")
-            expected = {server["name"] for server in profile.get("mcpServers", [])}
             current_names: dict[str, set[str]] = {}
             conflicting_names: dict[str, set[str]] = {}
             if "codex" in required_mcp_agents:
@@ -1400,45 +2141,50 @@ def main(argv: list[str] | None = None) -> int:
                         else:
                             conflicting_names["codex"].add(name)
             if "opencode" in required_mcp_agents:
-                current_names["opencode"] = names_from_text(
-                    run_output([args.opencode_command, "mcp", "list"]), expected
-                )
+                config = opencode_config_path()
+                config_text = config.read_text(encoding="utf-8") if config.exists() else ""
+                (
+                    current_names["opencode"],
+                    conflicting_names["opencode"],
+                ) = opencode_mcp_inventory(profile, config_text)
             if "copilot" in required_mcp_agents:
-                current_names["copilot"] = names_from_text(
-                    run_output([args.copilot_command, "mcp", "list"]), expected
-                )
-            plans.append(
-                build_mcp_plan(
+                (
+                    current_names["copilot"],
+                    conflicting_names["copilot"],
+                ) = copilot_mcp_inventory(
                     profile,
-                    current_names,
-                    profile_path=args.profile,
-                    update=args.update,
-                    conflicting_names=conflicting_names,
-                    codex_command=args.codex_command,
-                    opencode_command=args.opencode_command,
-                    copilot_command=args.copilot_command,
+                    run_json_value(
+                        [args.copilot_command, "mcp", "list", "--json"]
+                    ),
                 )
+            mcp_plan = build_mcp_plan(
+                profile,
+                current_names,
+                profile_path=args.profile,
+                update=args.update,
+                conflicting_names=conflicting_names,
+                codex_command=args.codex_command,
+                opencode_command=args.opencode_command,
+                copilot_command=args.copilot_command,
             )
+            if "opencode" in required_mcp_agents:
+                mcp_plan = guard_jsonc_opencode_plan(
+                    mcp_plan,
+                    profile,
+                    current_names.get("opencode", set()),
+                    conflicting_names.get("opencode", set()),
+                    config_text,
+                )
+            plans.append(mcp_plan)
         if "skills" in components:
-            if args.apply:
+            skill_plan = build_portable_skill_plan(profile, args.npx_command)
+            if args.apply and skill_plan.actions:
                 for command in ("git", args.npx_command):
                     if shutil.which(command) is None:
                         raise RuntimeError(f"required command not found: {command}")
-            plans.append(Plan(build_portable_skill_actions(profile, args.npx_command), [], [], []))
+            plans.append(skill_plan)
         if "instructions" in components:
-            instruction_command = (
-                sys.executable,
-                str(ROOT / "scripts" / "sync_instructions.py"),
-                "--apply",
-            )
-            plans.append(
-                Plan(
-                    [Action("ensure global comment instructions", instruction_command)],
-                    [],
-                    [],
-                    [],
-                )
-            )
+            plans.append(build_instruction_plan())
     except (RuntimeError, OSError, UnicodeDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -1448,7 +2194,10 @@ def main(argv: list[str] | None = None) -> int:
     blocking = [item for plan in plans for item in plan.blocking]
     drift = [item for plan in plans for item in plan.drift]
     if blocking and args.apply:
-        print("error: refusing partial reconciliation while marketplace sources drift", file=sys.stderr)
+        print(
+            "error: refusing partial reconciliation while managed state is unsafe",
+            file=sys.stderr,
+        )
         return 1
     if args.check:
         return 1 if drift else 0

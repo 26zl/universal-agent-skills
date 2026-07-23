@@ -19,11 +19,7 @@ Reviewed on 2026-07-22. The profile is declarative configuration, not proof that
 | `claude-mem` | `thedotmack` | Persistent cross-session context | Explicit opt-in: captures tool use and session context |
 | `humanizer` | `humanizer` | Natural prose rewriting | Instruction-only skill/plugin |
 
-The first ten entries were confirmed from the local Claude CLI. `claude-mem` and `humanizer` were added to the desired profile from the requested repositories. Claude's built-in `computer-use` capability is not managed as a plugin.
-
-The installed Karpathy marketplace still records `forrestchang/andrej-karpathy-skills`; the requested `multica-ai/andrej-karpathy-skills` source resolves to the same reviewed commit. The profile accepts the former as an alias but uses the latter for new machines.
-
-The installed ECC marketplace checkout was at `b6652335d32d2f2a664e12a09af646bf644b6c86`, while the reviewed upstream head was `b6fe5a71e194d711d9aa8f56024ddf7ca53fad0c`. No update was applied. The `--update` flag intentionally leaves that decision to the user.
+`claude-mem` remains opt-in, and Claude's built-in `computer-use` capability is outside plugin management. The profile accepts `forrestchang/andrej-karpathy-skills` as a legacy marketplace alias but uses `multica-ai/andrej-karpathy-skills` for new installations. External plugin updates occur only with `--update`.
 
 ## Cross-agent distribution
 

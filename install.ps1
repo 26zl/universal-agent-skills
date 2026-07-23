@@ -85,7 +85,7 @@ function Get-InstalledState {
 function Save-InstalledState([object[]]$Entries) {
     if ($DryRun) { return }
     New-Item -ItemType Directory -Path $StateHome -Force | Out-Null
-    $temp = "$StateFile.tmp.$PID"
+    $temp = "$StateFile.tmp.$([Guid]::NewGuid().ToString('N'))"
     ConvertTo-Json -InputObject @($Entries) -Depth 4 | Set-Content -LiteralPath $temp -Encoding UTF8
     Move-Item -LiteralPath $temp -Destination $StateFile -Force
 }
@@ -152,7 +152,7 @@ function Backup-Or-RemoveTarget([string]$Target, [string]$Source, [bool]$AllowBa
         throw "Refusing to overwrite unmanaged target: $Target (use -Force to back it up)"
     }
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
-    $backup = "$Target.uas-backup-$stamp.$PID"
+    $backup = "$Target.uas-backup-$stamp.$([Guid]::NewGuid().ToString('N'))"
     if ($DryRun) {
         Write-Plan "would back up unmanaged target: $Target -> $backup"
     } else {
@@ -222,7 +222,10 @@ if ($SkillFilter.Count -gt 0) {
 }
 
 $BaseDir = if ($Scope -eq "project") {
-    [System.IO.Path]::GetFullPath($ProjectDir)
+    if (-not (Test-Path -LiteralPath $ProjectDir -PathType Container)) {
+        throw "Project directory does not exist: $ProjectDir"
+    }
+    (Get-Item -LiteralPath $ProjectDir).FullName
 } else {
     [System.IO.Path]::GetFullPath($UserHome)
 }
@@ -258,7 +261,11 @@ if ($Uninstall) {
             foreach ($skillDir in $CanonicalSkills) {
                 $target = Join-Path (Join-Path $BaseDir $relative) $skillDir.Name
                 if (Invoke-OwnedTargetRemoval $target $skillDir.FullName) {
-                    Write-Plan "removed [$agent]: $($skillDir.Name)"
+                    if ($DryRun) {
+                        Write-Plan "would unregister [$agent]: $($skillDir.Name)"
+                    } else {
+                        Write-Plan "removed [$agent]: $($skillDir.Name)"
+                    }
                 }
             }
         }
@@ -287,7 +294,11 @@ if ($Uninstall) {
             continue
         }
         if (Invoke-OwnedTargetRemoval $entry.target $entry.source) {
-            Write-Plan "removed [$($entry.agent)]: $($entry.skill)"
+            if ($DryRun) {
+                Write-Plan "would unregister [$($entry.agent)]: $($entry.skill)"
+            } else {
+                Write-Plan "removed [$($entry.agent)]: $($entry.skill)"
+            }
         } else {
             Write-Warning "Target is no longer owned by this installer: $($entry.target)"
             $kept += $entry
@@ -309,24 +320,69 @@ foreach ($agent in $SelectedAgents) {
         $currentLink = Get-LinkTarget $target
         if ($EffectiveMode -eq "link" -and $currentLink -eq [System.IO.Path]::GetFullPath($source)) {
             Write-Plan "unchanged [$agent]: $($skillDir.Name)"
-        } else {
+        } elseif ($DryRun) {
             Backup-Or-RemoveTarget $target $source $Force.IsPresent
-            if ($DryRun) {
-                Write-Plan "would install [$agent/$EffectiveMode]: $($skillDir.Name) -> $target"
-            } else {
-                New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
-                if ($EffectiveMode -eq "link") {
-                    New-Item -ItemType SymbolicLink -Path $target -Target $source | Out-Null
-                } else {
-                    $temp = Join-Path (Split-Path -Parent $target) ".$($skillDir.Name).uas-tmp.$PID"
-                    if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
-                    New-Item -ItemType Directory -Path $temp | Out-Null
-                    Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $temp -Recurse -Force
+            Write-Plan "would install [$agent/$EffectiveMode]: $($skillDir.Name) -> $target"
+        } elseif ($EffectiveMode -eq "link") {
+            Backup-Or-RemoveTarget $target $source $Force.IsPresent
+            New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+            New-Item -ItemType SymbolicLink -Path $target -Target $source | Out-Null
+            Write-Plan "installed [$agent/$EffectiveMode]: $($skillDir.Name)"
+        } else {
+            $parent = Split-Path -Parent $target
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            $staged = Join-Path $parent ".$($skillDir.Name).uas-tmp.$([Guid]::NewGuid().ToString('N'))"
+            New-Item -ItemType Directory -Path $staged | Out-Null
+            $rollback = $null
+            $backup = $null
+            try {
+                try {
+                    Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $staged -Recurse -Force
                     @("managed-by=universal-agent-skills", "source=$source") |
-                        Set-Content -LiteralPath (Join-Path $temp $MarkerName) -Encoding UTF8
-                    Move-Item -LiteralPath $temp -Destination $target
+                        Set-Content -LiteralPath (Join-Path $staged $MarkerName) -Encoding UTF8
+                } catch {
+                    throw "Cannot stage skill copy $($skillDir.Name): $($_.Exception.Message)"
+                }
+
+                if (Test-PathOrLink $target) {
+                    if (Test-OwnedTarget $target $source) {
+                        $rollback = Join-Path $parent ".$($skillDir.Name).uas-old.$([Guid]::NewGuid().ToString('N'))"
+                        New-Item -ItemType Directory -Path $rollback | Out-Null
+                        Move-Item -LiteralPath $target -Destination (Join-Path $rollback "target")
+                    } elseif (-not $Force) {
+                        throw "Refusing to overwrite unmanaged target: $target (use -Force to back it up)"
+                    } else {
+                        $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
+                        $backup = "$target.uas-backup-$stamp.$([Guid]::NewGuid().ToString('N'))"
+                        Move-Item -LiteralPath $target -Destination $backup
+                        Write-Plan "backed up unmanaged target: $backup"
+                    }
+                }
+
+                try {
+                    Move-Item -LiteralPath $staged -Destination $target
+                } catch {
+                    if ($rollback -and (Test-Path -LiteralPath (Join-Path $rollback "target"))) {
+                        Move-Item -LiteralPath (Join-Path $rollback "target") -Destination $target
+                    } elseif ($backup -and (Test-PathOrLink $backup)) {
+                        Move-Item -LiteralPath $backup -Destination $target
+                    }
+                    throw
+                }
+                if ($rollback) {
+                    Remove-Item -LiteralPath $rollback -Recurse -Force -ErrorAction SilentlyContinue
                 }
                 Write-Plan "installed [$agent/$EffectiveMode]: $($skillDir.Name)"
+            } finally {
+                if (Test-Path -LiteralPath $staged) {
+                    Remove-Item -LiteralPath $staged -Recurse -Force
+                }
+                if ($rollback -and (Test-Path -LiteralPath $rollback)) {
+                    $recoveryTarget = Join-Path $rollback "target"
+                    if (-not (Test-PathOrLink $recoveryTarget)) {
+                        Remove-Item -LiteralPath $rollback -Recurse -Force
+                    }
+                }
             }
         }
 
