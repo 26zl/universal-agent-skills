@@ -12,7 +12,7 @@ Delivered work records the accountable human author and describes the change, ne
 
 - Never add a Co-Authored-By, Signed-off-by, or similar trailer naming an AI assistant, agent, model, or tool.
 - Never append generated-with footers, robot signatures, tool names, or promotional links to commit messages, merge or squash messages, pull request titles or bodies, changelogs, or release notes.
-- Never write code comments, docstrings, documentation, or ticket updates that narrate prompts, AI involvement, the editing session, or a conversation with an assistant.
+- Never write code comments, docstrings, documentation, or ticket updates that narrate prompts, AI involvement, the editing session (including before/after or fix-history narration such as "previously… now…"), or a conversation with an assistant.
 - Never change the configured Git author or committer identity.
 - Preserve trailers and attribution that credit humans; only machine self-reference is removed or withheld.
 - Do not introduce new attribution or narration while amending, rebasing, squashing, or rewording existing content.

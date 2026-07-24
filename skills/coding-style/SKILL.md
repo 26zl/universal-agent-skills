@@ -15,6 +15,7 @@ Write code that explains itself through names, structure, and small functions. T
 - Explain why a surprising choice is necessary. Do not narrate what an obvious line already does.
 - Avoid first-person or conversational phrasing such as “I added,” “we need,” “here we,” or “this is where.”
 - Avoid commentary about the editing process, the prompt, the agent, or who generated the code.
+- Do not narrate the change itself: no before/after wording, "previously," "now," "used to," or "fixed" — state the current invariant, not the diff that produced it.
 - Do not add tutorial paragraphs throughout implementation code.
 - Delete stale, redundant, speculative, or copied comments when touching nearby code.
 - Preserve required API documentation, public contracts, safety warnings, citations, and legal notices.
@@ -43,6 +44,22 @@ Omit comments that only restate the code:
 retryCount += 1;
 ```
 
+State the current invariant, not the change that produced it:
+
+```py
+# Built-in marketplaces (openai-*) are listed without a source.
+if name not in managed:
+    continue
+```
+
+Avoid narrating the fix history:
+
+```py
+# Before the fix this raised "inventory malformed"; now the built-in is skipped.
+if name not in managed:
+    continue
+```
+
 ## Review
 
-Before finishing, inspect new and edited comments. Shorten or remove any comment that sounds conversational, narrates the implementation, repeats the code, or reveals use of an AI assistant.
+Before finishing, inspect new and edited comments. Shorten or remove any comment that sounds conversational, narrates the implementation, repeats the code, describes the change history, or reveals use of an AI assistant.

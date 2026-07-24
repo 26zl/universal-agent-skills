@@ -170,6 +170,18 @@ class AgentStackTests(unittest.TestCase):
                 update=False,
             )
 
+    def test_codex_plan_skips_unmanaged_builtin_marketplace(self) -> None:
+        # Codex lists built-in openai-* marketplaces without a marketplaceSource; skip them instead of aborting.
+        plan = stack.build_codex_plan(
+            self.profile,
+            [{"name": "openai-curated", "root": "/tmp/plugins"}],
+            [],
+            update=False,
+        )
+        # Built-in marketplaces (openai-*) are listed without a marketplaceSource.
+        self.assertIsInstance(plan, stack.Plan)
+        self.assertNotIn("missing Codex marketplace: openai-curated", plan.drift)
+
     def test_sensitive_plugin_requires_opt_in(self) -> None:
         plan = stack.build_claude_plan(
             self.profile,

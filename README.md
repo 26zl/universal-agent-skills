@@ -103,7 +103,7 @@ Install into the current project instead of the user profile:
 ./install.sh --scope project --project-dir ~/path/to/project
 ```
 
-Without `--project-dir` the current directory is used; PowerShell accepts the same through `-Scope project -ProjectDir`. Project installations land in the project's own discovery paths (`.claude/skills`, `.agents/skills`, `.opencode/skills`) and are tracked separately from global installations, so uninstalling one scope never touches the other. Prefer `--mode copy` for shared projects because symbolic links point into your local clone.
+Without `--project-dir` the current directory is used; PowerShell accepts the same through `-Scope project -ProjectDir`. Project installations land in the project's own discovery paths (`.claude/skills`, `.agents/skills`, `.opencode/skills`) and are tracked separately from global installations. Prefer `--mode copy` for shared projects because symbolic links point into your local clone.
 
 ## Bootstrap one-liner for macOS and Linux
 
@@ -176,14 +176,13 @@ python3 scripts/sync_agent_stack.py --apply --include-sensitive
 
 Add `--update` to refresh already-installed external plugins. The reconciler never removes plugins that are not in the profile and refuses to replace a marketplace whose source differs. It disables anonymous `skills` CLI telemetry and uses exact package versions plus full commit URLs for portable third-party skills.
 
-The always-on comment rule is merged between ownership markers in `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, and `~/.copilot/copilot-instructions.md`. Existing text is preserved. Audit or remove only the managed block with:
+The always-on comment rule is merged between ownership markers in `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, and `~/.copilot/copilot-instructions.md`. Existing text is preserved. Audit the managed block with:
 
 ```bash
 python3 scripts/sync_instructions.py
-python3 scripts/sync_instructions.py --apply --uninstall
 ```
 
-External-stack removal is deliberately manual because some listed plugins already existed before this repository. The normal `--uninstall` option remains ownership-tracked for repository-owned skills.
+Removal for every install path is covered under [Uninstall](#uninstall).
 
 See [Plugin stack](docs/plugin-stack.md) for the complete inventory, risk notes, and the patterns adopted from the reviewed repositories.
 
@@ -203,13 +202,7 @@ Refresh a normal branch clone and reinstall:
 
 For a checkout created by `bootstrap.sh`, rerun the bootstrap command with the same repository and ref. Link installations immediately use the refreshed source; copy installations are recopied.
 
-Remove only entries owned by this installer:
-
-```bash
-./install.sh --uninstall
-```
-
-The PowerShell equivalents are `-DryRun`, `-Update`, and `-Uninstall`.
+The PowerShell equivalents are `-DryRun` and `-Update`. To remove installed skills or plugins, see [Uninstall](#uninstall).
 
 If a target already exists and is not managed by this repository, installation stops. `--force` or `-Force` moves the conflict to a timestamped backup instead of deleting it.
 
@@ -258,6 +251,50 @@ copilot plugin install universal-agent-skills@universal-agent-skills
 ```
 
 VS Code Copilot consumes the repository's `.github/copilot-instructions.md`, root `AGENTS.md`, and standard skills. It does not execute every Claude Code hook or plugin, so support is capability-mapped rather than binary-identical.
+
+## Uninstall
+
+Removal depends on how you installed. Each path below is self-contained; pick the one you used.
+
+### Skills from `install.sh` or the bootstrap one-liner
+
+The installer removes only what it recorded in `installed.tsv` and never touches unmanaged files. Preview first, then remove:
+
+```bash
+./install.sh --dry-run --uninstall        # show what would be removed
+./install.sh --uninstall                  # remove every skill this repo owns
+```
+
+Narrow it the same way you installed; global and project installs are tracked separately, so removing one never affects the other:
+
+```bash
+./install.sh --uninstall --agents codex --skill coding-style     # a single agent/skill
+./install.sh --uninstall --scope project --project-dir /path     # a project install
+```
+
+Bootstrap users can rerun the one-liner with `--uninstall`, or call `./install.sh --uninstall` from the cached clone at `~/.local/share/universal-agent-skills/repo`. On Windows, use `install.ps1 -Uninstall` or `bootstrap.ps1 -Uninstall` with the same options.
+
+### Personal instruction block
+
+```bash
+python3 scripts/sync_instructions.py --apply --uninstall
+```
+
+### Native plugin added through a marketplace
+
+`install.sh --uninstall` does not manage native plugins; each client keeps its own registry. Reverse the two install steps with that client's commands:
+
+| Client | Remove the plugin | Remove the marketplace |
+| --- | --- | --- |
+| Claude Code | `/plugin uninstall universal-agent-skills@universal-agent-skills` | `/plugin marketplace remove universal-agent-skills` |
+| Codex | `codex plugin remove universal-agent-skills@universal-agent-skills` | `codex plugin marketplace remove universal-agent-skills` |
+| GitHub Copilot CLI | `copilot plugin uninstall universal-agent-skills@universal-agent-skills` | `copilot plugin marketplace remove universal-agent-skills` |
+
+Removing a marketplace also removes the plugins installed from it: Claude Code warns first, and Copilot CLI requires `--force` while plugins remain.
+
+### External stack plugins
+
+Third-party plugins declared in the profile (for example `ponytail`) may predate this repository, so their removal is deliberately manual. Remove them with each plugin's upstream manager after reviewing stored data and shared dependencies; see `docs/plugin-stack.md`.
 
 ## Adding a skill
 

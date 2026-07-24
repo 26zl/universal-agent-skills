@@ -765,14 +765,14 @@ def build_codex_plan(
     current_markets: dict[str, dict[str, Any]] = {}
     for item in current_marketplaces:
         name = item.get("name")
+        # Codex lists built-in marketplaces (openai-*) without a marketplaceSource; enforce shape only for markets the profile manages.
+        if not isinstance(name, str) or name not in desired_markets:
+            continue
         source_data = item.get("marketplaceSource")
-        if (
-            not isinstance(name, str)
-            or not name
-            or not isinstance(source_data, dict)
-            or not isinstance(source_data.get("source"), str)
+        if not isinstance(source_data, dict) or not isinstance(
+            source_data.get("source"), str
         ):
-            raise RuntimeError("Codex marketplace inventory is malformed")
+            raise RuntimeError(f"Codex marketplace inventory is malformed: {name}")
         current_markets[name] = item
 
     for marketplace in desired_markets.values():
