@@ -30,7 +30,13 @@ The installers are idempotent, support symbolic links or copies, track what they
 .
 ├── skills/                         # Canonical Agent Skills
 │   ├── coding-style/
+│   ├── data-minimization/
+│   ├── destructive-ops-approval/
+│   ├── license-compliance/
+│   ├── no-ai-traces/
+│   ├── secret-hygiene/
 │   ├── simplify-code/
+│   ├── supply-chain-pinning/
 │   ├── surgical-implementation/
 │   └── verify-changes/
 ├── profiles/default.json           # Desired external plugin/skill stack
@@ -47,6 +53,10 @@ The installers are idempotent, support symbolic links or copies, track what they
 `coding-style` tells agents to prefer self-explanatory code and use short, neutral comments only when intent or constraints are not obvious. It explicitly avoids conversational, first-person, AI-like narration.
 
 `simplify-code` provides the portable equivalent of a focused code-simplifier workflow while preserving behavior. `surgical-implementation` keeps changes small, makes material assumptions visible, and prevents drive-by refactoring. `verify-changes` requires focused validation evidence before an agent reports completion.
+
+`no-ai-traces` keeps delivered work — commits, pull requests, release notes, comments, and documentation — free of assistant self-reference such as Co-Authored-By trailers, generated-with footers, or session narration. Explicit organizational disclosure requirements always take precedence over the skill.
+
+`secret-hygiene`, `data-minimization`, `supply-chain-pinning`, `destructive-ops-approval`, and `license-compliance` form a workplace governance set: secret values never enter code or output, real personal data stays out of tests and logs, dependencies are justified and pinned, irreversible operations wait for explicit approval, and third-party code enters only with a compatible license and preserved attribution.
 
 ## Supported targets
 
@@ -100,15 +110,15 @@ Without `--project-dir` the current directory is used; PowerShell accepts the sa
 Pin a full commit for immutable installs, or use a protected release tag for release-oriented installs:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.2.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.2.0
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.0
 ```
 
-For a rolling installation that follows `main`, change both occurrences of `v0.2.0` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
+For a rolling installation that follows `main`, change both occurrences of `v0.3.0` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
 
 Add `--with-agent-stack` to reconcile the complete declared stack: Claude plugins, Codex and Copilot CLI plugins, the OpenCode Ponytail plugin, the VS Code Copilot extension, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.2.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.2.0 --with-agent-stack --include-sensitive-plugins
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.0/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.0 --with-agent-stack --include-sensitive-plugins
 ```
 
 Piping remote code into a shell trades reviewability for convenience. For higher assurance, download the script, inspect it, and execute it from disk. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
@@ -126,7 +136,7 @@ From a clone:
 Pinned remote bootstrap in one line:
 
 ```powershell
-$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.2.0/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.2.0
+$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.3.0/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.3.0
 ```
 
 PowerShell `auto` mode tries symbolic links first and falls back to copies when Windows Developer Mode or sufficient privileges are unavailable.

@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [coding-style, simplify-code, surgical-implementation, verify-changes]
+        skill: [coding-style, data-minimization, destructive-ops-approval, license-compliance, no-ai-traces, secret-hygiene, simplify-code, supply-chain-pinning, surgical-implementation, verify-changes]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

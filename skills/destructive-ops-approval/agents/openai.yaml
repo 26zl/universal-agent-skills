@@ -1,0 +1,4 @@
+interface:
+  display_name: "Destructive Ops Approval"
+  short_description: "Irreversible operations wait for explicit approval"
+  default_prompt: "Use $destructive-ops-approval before irreversible operations."

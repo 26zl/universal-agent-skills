@@ -1,0 +1,4 @@
+interface:
+  display_name: "No AI Traces"
+  short_description: "Deliverables without AI self-reference or session narration"
+  default_prompt: "Use $no-ai-traces for commit messages, pull requests, and delivered docs."

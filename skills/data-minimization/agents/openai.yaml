@@ -1,0 +1,4 @@
+interface:
+  display_name: "Data Minimization"
+  short_description: "Real personal data stays out of development artifacts"
+  default_prompt: "Use $data-minimization when handling test data, logs, or personal records."

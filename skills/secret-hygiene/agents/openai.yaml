@@ -1,0 +1,4 @@
+interface:
+  display_name: "Secret Hygiene"
+  short_description: "Credentials never enter code, output, or history"
+  default_prompt: "Use $secret-hygiene whenever work could touch credentials."

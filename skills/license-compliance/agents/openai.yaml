@@ -1,0 +1,4 @@
+interface:
+  display_name: "License Compliance"
+  short_description: "Third-party code enters only with a compatible license"
+  default_prompt: "Use $license-compliance before copying or vendoring third-party code."

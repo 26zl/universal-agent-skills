@@ -1,0 +1,4 @@
+interface:
+  display_name: "Supply Chain Pinning"
+  short_description: "Dependencies are justified, pinned, and reviewed"
+  default_prompt: "Use $supply-chain-pinning when adding or updating dependencies."
