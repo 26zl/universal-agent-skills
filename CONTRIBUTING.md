@@ -11,6 +11,7 @@ Contributions should keep the canonical skill format portable and the installati
 5. Add `scripts/`, `references/`, or `assets/` only when the skill uses them.
 6. Avoid product-only frontmatter in canonical skills. Put UI metadata under `agents/`.
 7. Apply the `coding-style` guidance to bundled code.
+8. Add a new skill to `defaultPrompt` in `.codex-plugin/plugin.json`; validation fails while a skill is missing there.
 
 Do not add a README, changelog, or installation guide inside an individual skill. Repository-level documentation belongs at the repository root or under `docs/`.
 

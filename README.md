@@ -52,7 +52,7 @@ The installers are idempotent, support symbolic links or copies, track what they
 
 `coding-style` tells agents to prefer self-explanatory code and use short, neutral comments only when intent or constraints are not obvious. It explicitly avoids conversational, first-person, AI-like narration.
 
-`simplify-code` provides the portable equivalent of a focused code-simplifier workflow while preserving behavior. `surgical-implementation` keeps changes small, makes material assumptions visible, and prevents drive-by refactoring. `verify-changes` requires focused validation evidence before an agent reports completion.
+`simplify-code` provides the portable equivalent of a focused code-simplifier workflow while preserving behavior. `surgical-implementation` keeps changes small, makes material assumptions visible, prevents drive-by refactoring, and requires a defect found along the way to be fixed as its own change instead of silently skipped. `verify-changes` requires focused validation evidence before an agent reports completion.
 
 `no-ai-traces` keeps delivered work — commits, pull requests, release notes, comments, and documentation — free of assistant self-reference such as Co-Authored-By trailers, generated-with footers, or session narration. Explicit organizational disclosure requirements always take precedence over the skill.
 

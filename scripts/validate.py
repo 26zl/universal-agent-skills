@@ -17,6 +17,7 @@ SKILLS = ROOT / "skills"
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 LINK_RE = re.compile(r"\[[^]]*]\(([^)]+)\)")
+SKILL_REF_RE = re.compile(r"\$([a-z0-9]+(?:-[a-z0-9]+)*)")
 ALLOWED_FIELDS = {
     "name",
     "description",
@@ -25,6 +26,10 @@ ALLOWED_FIELDS = {
     "metadata",
     "allowed-tools",
 }
+
+
+def referenced_skills(text: str) -> set[str]:
+    return set(SKILL_REF_RE.findall(text))
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -94,7 +99,7 @@ def validate_skill(path: Path) -> list[str]:
     openai_yaml = path / "agents" / "openai.yaml"
     if openai_yaml.exists():
         yaml_text = openai_yaml.read_text(encoding="utf-8")
-        if f"${name}" not in yaml_text:
+        if name not in referenced_skills(yaml_text):
             errors.append(f"{openai_yaml}: default_prompt must mention ${name}")
     return errors
 
@@ -134,7 +139,7 @@ def validate_plugin_versions(
     return errors
 
 
-def validate_manifests() -> list[str]:
+def validate_manifests(skill_names: list[str]) -> list[str]:
     errors: list[str] = []
     paths = [
         ROOT / ".codex-plugin" / "plugin.json",
@@ -165,6 +170,14 @@ def validate_manifests() -> list[str]:
             os.environ.get("GITHUB_REF_NAME", ""),
         )
     )
+
+    prompt = loaded.get(paths[0], {}).get("interface", {}).get("defaultPrompt", [])
+    if not isinstance(prompt, list) or not all(isinstance(line, str) for line in prompt):
+        errors.append(f"{paths[0]}: defaultPrompt must be a list of strings")
+    else:
+        missing = sorted(set(skill_names) - referenced_skills("\n".join(prompt)))
+        if missing:
+            errors.append(f"{paths[0]}: defaultPrompt must mention {', '.join(missing)}")
 
     codex_market = loaded.get(paths[3], {})
     for plugin in codex_market.get("plugins", []):
@@ -225,7 +238,7 @@ def main() -> int:
         errors.append(f"{SKILLS}: no skills found")
     for path in skill_dirs:
         errors.extend(validate_skill(path))
-    errors.extend(validate_manifests())
+    errors.extend(validate_manifests([path.name for path in skill_dirs]))
     errors.extend(validate_adapters())
     errors.extend(validate_profiles())
 
