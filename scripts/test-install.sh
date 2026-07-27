@@ -91,8 +91,8 @@ kill_mv_bin="$TEMP_ROOT/kill-mv-bin"
 mkdir -p "$kill_mv_bin"
 printf '%s\n' \
   '#!/bin/sh' \
-  'case "$2" in' \
-  '  *.uas-old.*/target) /bin/mv "$@"; kill -TERM "$PPID"; exit 0 ;;' \
+  "case \"\$2\" in" \
+  "  *.uas-old.*/target) /bin/mv \"\$@\"; kill -TERM \"\$PPID\"; exit 0 ;;" \
   'esac' \
   'exec /bin/mv "$@"' > "$kill_mv_bin/mv"
 chmod +x "$kill_mv_bin/mv"
@@ -110,8 +110,11 @@ detached_clone="$TEMP_ROOT/detached-clone"
 git clone --quiet --no-local "$ROOT" "$detached_clone" 2>/dev/null
 git -C "$detached_clone" checkout --quiet --detach HEAD
 cp "$ROOT/install.sh" "$detached_clone/install.sh"
-git -C "$detached_clone" -c user.email=tests@example.invalid -c user.name=tests \
-  commit --quiet -am "installer under test"
+# The clone already matches when the working tree is clean, so committing is only needed for local edits.
+if [ -n "$(git -C "$detached_clone" status --porcelain)" ]; then
+  git -C "$detached_clone" -c user.email=tests@example.invalid -c user.name=tests \
+    commit --quiet -am "installer under test"
+fi
 detached_output=$(sh "$detached_clone/install.sh" --update --agents codex --skill coding-style 2>&1) && \
   fail "--update should fail on a detached checkout"
 printf '%s\n' "$detached_output" | grep -q 'tracks no upstream branch' ||
