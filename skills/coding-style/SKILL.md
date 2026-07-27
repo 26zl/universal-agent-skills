@@ -1,6 +1,6 @@
 ---
 name: coding-style
-description: Keep code comments and docstrings concise, neutral, and human-authored in tone. Use when writing, refactoring, or reviewing code where comments may be added or changed; do not use to shorten required public API documentation, safety notes, or legal notices.
+description: Keep code comments and docstrings concise, neutral, human-authored in tone, and written in English unless another language is required. Use when writing, refactoring, or reviewing code where comments, identifiers, or docstrings may be added or changed; do not use to shorten required public API documentation, safety notes, or legal notices.
 license: MIT
 ---
 
@@ -20,6 +20,14 @@ Write code that explains itself through names, structure, and small functions. T
 - Delete stale, redundant, speculative, or copied comments when touching nearby code.
 - Preserve required API documentation, public contracts, safety warnings, citations, and legal notices.
 - Match the repository's established documentation convention when it is stricter than this skill.
+
+## Language
+
+- Write code in English: identifiers, comments, docstrings, commit messages, and test names.
+- Keep English even when the conversation, issue, or specification is in another language.
+- Switch only when the user asks for another language, or when the repository already uses one consistently.
+- Never mix languages inside one identifier or one comment.
+- Keep user-facing strings, translations, and localized content in whatever language the product requires.
 
 ## Examples
 
@@ -62,4 +70,4 @@ if name not in managed:
 
 ## Review
 
-Before finishing, inspect new and edited comments. Shorten or remove any comment that sounds conversational, narrates the implementation, repeats the code, describes the change history, or reveals use of an AI assistant.
+Before finishing, inspect new and edited comments. Shorten or remove any comment that sounds conversational, narrates the implementation, repeats the code, describes the change history, or reveals use of an AI assistant. Rewrite any identifier or comment left in the conversation's language instead of the repository's.
