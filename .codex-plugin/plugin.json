@@ -1,6 +1,6 @@
 {
   "name": "universal-agent-skills",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Portable coding-agent skills for consistent implementation and verification workflows.",
   "author": {
     "name": "Repository maintainers"

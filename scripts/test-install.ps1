@@ -131,6 +131,18 @@ try {
         Assert-True (-not (Test-Path (Join-Path $env:UAS_HOME ".claude/skills/coding-style"))) "Link uninstall failed"
     }
 
+    $pluginCache = Join-Path $env:UAS_HOME ".claude/plugins/cache/universal-agent-skills"
+    New-Item -ItemType Directory -Path $pluginCache -Force | Out-Null
+    $duplicateWarnings = @()
+    & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style -WarningVariable duplicateWarnings 3>$null
+    Assert-True ([bool]($duplicateWarnings -match "native plugin also installed")) "Native plugin duplicate was not reported"
+    New-Item -ItemType File -Path (Join-Path $pluginCache ".orphaned_at") -Force | Out-Null
+    $orphanedWarnings = @()
+    & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style -WarningVariable orphanedWarnings 3>$null
+    Assert-True (-not ($orphanedWarnings -match "native plugin also installed")) "Orphaned plugin cache was reported as a duplicate"
+    Remove-Item -LiteralPath (Join-Path $env:UAS_HOME ".claude/plugins") -Recurse -Force
+    & (Join-Path $Root "install.ps1") -Uninstall -Agents codex -Skill coding-style
+
     $project = Join-Path $TempRoot "project"
     New-Item -ItemType Directory -Path $project -Force | Out-Null
     & (Join-Path $Root "install.ps1") -Mode copy -Scope project -ProjectDir $project -Agents claude

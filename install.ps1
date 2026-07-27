@@ -236,6 +236,11 @@ if ($Update -and -not $Uninstall) {
     if ($LASTEXITCODE -ne 0) { throw "Source is not a git repository" }
     $dirty = & git -C $Root status --porcelain
     if ($dirty) { throw "Source repository has local changes; commit or stash them before -Update" }
+    # bootstrap.ps1 checks out an exact ref, so its clones are detached and have nothing to fast-forward.
+    & git -C $Root rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Source checkout tracks no upstream branch; rerun bootstrap with the wanted -Ref, or drop -Update"
+    }
     if ($DryRun) {
         Write-Plan "would run: git -C $Root pull --ff-only"
     } else {
@@ -379,6 +384,9 @@ foreach ($agent in $SelectedAgents) {
                 }
                 if ($rollback -and (Test-Path -LiteralPath $rollback)) {
                     $recoveryTarget = Join-Path $rollback "target"
+                    if ((Test-PathOrLink $recoveryTarget) -and -not (Test-PathOrLink $target)) {
+                        Move-Item -LiteralPath $recoveryTarget -Destination $target -ErrorAction SilentlyContinue
+                    }
                     if (-not (Test-PathOrLink $recoveryTarget)) {
                         Remove-Item -LiteralPath $rollback -Recurse -Force
                     }
@@ -401,4 +409,20 @@ foreach ($agent in $SelectedAgents) {
         }
     }
 }
+
+# Native plugin installs live beside the direct install and surface every skill a second time.
+if ($Scope -eq "global") {
+    foreach ($pluginDir in @(
+        (Join-Path $UserHome ".claude/plugins/cache/universal-agent-skills"),
+        (Join-Path $UserHome ".codex/plugins/cache/universal-agent-skills"),
+        (Join-Path $UserHome ".copilot/installed-plugins/universal-agent-skills"))) {
+        if (-not (Test-Path -LiteralPath $pluginDir -PathType Container)) { continue }
+        # Claude and Codex keep the cached copy after an uninstall and mark it .orphaned_at; a mixed cache of orphaned and live versions is reported as live.
+        $orphaned = Get-ChildItem -LiteralPath $pluginDir -Recurse -Force -Filter ".orphaned_at" -ErrorAction SilentlyContinue
+        if ($orphaned) { continue }
+        Write-Warning "native plugin also installed: $pluginDir"
+        Write-Warning "the same skills will appear twice; remove one method (see README 'Uninstall')"
+    }
+}
+
 Write-Plan "done"

@@ -42,6 +42,29 @@ Environment:
 EOF
 }
 
+staged=
+rollback_dir=
+target=
+
+# .uas-tmp and .uas-old hold only managed copies a reinstall can reproduce; .uas-backup holds user data and is never removed here.
+cleanup_staging() {
+  if [ -n "$rollback_dir" ]; then
+    if [ -e "$rollback_dir/target" ] && [ ! -e "$target" ] && [ ! -L "$target" ]; then
+      mv "$rollback_dir/target" "$target" 2>/dev/null || true
+    fi
+    rm -rf -- "$rollback_dir"
+    rollback_dir=
+  fi
+  if [ -n "$staged" ]; then
+    rm -rf -- "$staged"
+    staged=
+  fi
+}
+
+trap 'cleanup_staging; exit 130' INT
+trap 'cleanup_staging; exit 143' TERM
+trap 'cleanup_staging; exit 129' HUP
+
 say() {
   printf '%s\n' "$*"
 }
@@ -243,6 +266,10 @@ if [ "$UPDATE" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
   if [ -n "$dirty" ]; then
     die "source repository has local changes; commit or stash them before --update"
   fi
+  # bootstrap.sh checks out an exact ref, so its clones are detached and have nothing to fast-forward.
+  if ! git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+    die "source checkout tracks no upstream branch; rerun bootstrap with the wanted --ref, or drop --update"
+  fi
   if [ "$DRY_RUN" -eq 1 ]; then
     say "would run: git -C $ROOT pull --ff-only"
   else
@@ -409,8 +436,10 @@ install_one() {
       rm -rf -- "$staged"
       die "cannot activate staged skill copy: $skill"
     fi
+    staged=
     if [ -n "$rollback_dir" ]; then
       rm -rf -- "$rollback_dir"
+      rollback_dir=
     fi
   fi
   say "installed [$agent/$MODE]: $skill"
@@ -490,6 +519,23 @@ if [ "$UNINSTALL" -eq 1 ]; then
   exit 0
 fi
 
+# Native plugin installs live beside the direct install and surface every skill a second time.
+warn_native_plugin_duplicates() {
+  [ "$SCOPE" = global ] || return 0
+  for plugin_dir in \
+    "$USER_HOME/.claude/plugins/cache/universal-agent-skills" \
+    "$USER_HOME/.codex/plugins/cache/universal-agent-skills" \
+    "$USER_HOME/.copilot/installed-plugins/universal-agent-skills"; do
+    [ -d "$plugin_dir" ] || continue
+    # Claude and Codex keep the cached copy after an uninstall and mark it .orphaned_at; a mixed cache of orphaned and live versions is reported as live.
+    if find "$plugin_dir" -name '.orphaned_at' 2>/dev/null | grep -q .; then
+      continue
+    fi
+    warn "native plugin also installed: $plugin_dir"
+    warn "the same skills will appear twice; remove one method (see README 'Uninstall')"
+  done
+}
+
 for agent in $(printf '%s' "$SELECTED_AGENTS" | tr ',' ' '); do
   relative=$(adapter_path "$agent")
   case "$relative" in
@@ -502,5 +548,7 @@ for agent in $(printf '%s' "$SELECTED_AGENTS" | tr ',' ' '); do
     install_one "$agent" "$skill" "$source" "$target"
   done
 done
+
+warn_native_plugin_duplicates
 
 say "done"

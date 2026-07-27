@@ -110,15 +110,15 @@ Without `--project-dir` the current directory is used; PowerShell accepts the sa
 Pin a full commit for immutable installs, or use a protected release tag for release-oriented installs:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.2/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.2
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.3/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.3
 ```
 
-For a rolling installation that follows `main`, change both occurrences of `v0.3.2` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
+For a rolling installation that follows `main`, change both occurrences of `v0.3.3` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
 
 Add `--with-agent-stack` to reconcile the complete declared stack: Claude plugins, Codex and Copilot CLI plugins, the OpenCode Ponytail plugin, the VS Code Copilot extension, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.2/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.2 --with-agent-stack --include-sensitive-plugins
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.3/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.3 --with-agent-stack --include-sensitive-plugins
 ```
 
 Piping remote code into a shell trades reviewability for convenience. For higher assurance, download the script, inspect it, and execute it from disk. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
@@ -136,7 +136,7 @@ From a clone:
 Pinned remote bootstrap in one line:
 
 ```powershell
-$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.3.2/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.3.2
+$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.3.3/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.3.3
 ```
 
 PowerShell `auto` mode tries symbolic links first and falls back to copies when Windows Developer Mode or sufficient privileges are unavailable.
@@ -215,7 +215,7 @@ State is stored under:
 
 Direct skill installation is the most portable option. Native plugins are useful when an agent should manage the bundle as a versioned package.
 
-Use one method per machine: combining the native plugin with a direct installation surfaces the same skills twice. Plugin-provided skills are namespaced by the client, so neither copy overrides the other; they simply both appear.
+Use one method per machine: combining the native plugin with a direct installation surfaces the same skills twice. Plugin-provided skills are namespaced by the client, so neither copy overrides the other; they simply both appear. The installer warns when it finds a native plugin beside the direct installation, but it never removes the plugin for you.
 
 ### Claude Code
 

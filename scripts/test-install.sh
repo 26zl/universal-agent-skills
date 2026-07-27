@@ -87,6 +87,47 @@ if find "$UAS_HOME/.agents/skills" -maxdepth 1 \
   fail "activation failure left a staging or rollback directory"
 fi
 
+kill_mv_bin="$TEMP_ROOT/kill-mv-bin"
+mkdir -p "$kill_mv_bin"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'case "$2" in' \
+  '  *.uas-old.*/target) /bin/mv "$@"; kill -TERM "$PPID"; exit 0 ;;' \
+  'esac' \
+  'exec /bin/mv "$@"' > "$kill_mv_bin/mv"
+chmod +x "$kill_mv_bin/mv"
+if PATH="$kill_mv_bin:$PATH" sh "$ROOT/install.sh" \
+  --mode copy --agents codex --skill coding-style 2>/dev/null; then
+  fail "interrupted copy refresh should exit non-zero"
+fi
+[ -f "$target/SKILL.md" ] || fail "interrupted copy refresh did not restore the managed target"
+if find "$UAS_HOME/.agents/skills" -maxdepth 1 \
+  \( -name '.coding-style.uas-tmp.*' -o -name '.coding-style.uas-old.*' \) | grep -q .; then
+  fail "interrupted copy refresh left a staging or rollback directory"
+fi
+
+detached_clone="$TEMP_ROOT/detached-clone"
+git clone --quiet --no-local "$ROOT" "$detached_clone" 2>/dev/null
+git -C "$detached_clone" checkout --quiet --detach HEAD
+cp "$ROOT/install.sh" "$detached_clone/install.sh"
+git -C "$detached_clone" -c user.email=tests@example.invalid -c user.name=tests \
+  commit --quiet -am "installer under test"
+detached_output=$(sh "$detached_clone/install.sh" --update --agents codex --skill coding-style 2>&1) && \
+  fail "--update should fail on a detached checkout"
+printf '%s\n' "$detached_output" | grep -q 'tracks no upstream branch' ||
+  fail "--update did not explain the detached checkout"
+
+plugin_cache="$UAS_HOME/.claude/plugins/cache/universal-agent-skills"
+mkdir -p "$plugin_cache"
+duplicate_output=$(sh "$ROOT/install.sh" --mode copy --agents codex --skill coding-style 2>&1)
+printf '%s\n' "$duplicate_output" | grep -q 'native plugin also installed' ||
+  fail "native plugin duplicate was not reported"
+touch "$plugin_cache/.orphaned_at"
+orphaned_output=$(sh "$ROOT/install.sh" --mode copy --agents codex --skill coding-style 2>&1)
+printf '%s\n' "$orphaned_output" | grep -q 'native plugin also installed' &&
+  fail "orphaned plugin cache was reported as a duplicate"
+rm -rf -- "$UAS_HOME/.claude/plugins"
+
 sh "$ROOT/install.sh" --uninstall --agents codex --skill coding-style
 assert_missing "$target"
 
