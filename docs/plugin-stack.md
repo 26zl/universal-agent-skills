@@ -53,7 +53,9 @@ The profile does not pretend that plugin formats or hook lifecycles are intercha
 - installs portable skills through the exact `skills@1.5.9` CLI with telemetry disabled;
 - fetches each portable source at a full Git commit, verifies a clean checkout, and installs from that local cache.
 
-`scripts/sync_instructions.py` merges one short, ownership-marked comment rule into each client's documented personal instruction file. It preserves unrelated content, rejects malformed markers, supports dry-run/check/uninstall, and never copies conversation history into instructions.
+`scripts/sync_instructions.py` merges one short, ownership-marked rule block into each client's documented personal instruction file. It preserves unrelated content, rejects malformed markers, supports dry-run/check/uninstall, and never copies conversation history into instructions.
+
+The block deliberately duplicates a small part of the skills. Skills are model-invoked: only their name and description reach the system prompt, and the body loads when the agent decides it is relevant. That works for task-shaped skills such as `simplify-code`, but a passive rule offers no moment of invocation, so it is silently skipped. Only the rules that must hold on every edit belong in the block; keeping it short is what keeps it read.
 
 The reconciler is additive and intentionally has no external-stack uninstall mode because the same plugins may predate this repository. Use the relevant upstream manager to remove an external plugin after reviewing its stored data and shared dependencies. The repository-owned skills still support tracked `--uninstall` through `install.sh` and `install.ps1`.
 

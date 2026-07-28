@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safely manage the short global coding-comment rule for supported agents."""
+"""Safely manage the short global always-on agent rules for supported agents."""
 
 from __future__ import annotations
 
@@ -19,7 +19,14 @@ RULES = """## Code comments
 - Add comments only for non-obvious intent, invariants, constraints, workarounds, security boundaries, or surprising tradeoffs.
 - Keep comments factual, neutral, and normally one sentence.
 - Never narrate prompts, AI use, the user-agent collaboration, debugging history, or obvious code behavior in comments.
-- Preserve required API documentation, license notices, generated markers, and safety-critical explanations."""
+- Preserve required API documentation, license notices, generated markers, and safety-critical explanations.
+
+## Hard rules
+
+- Never hardcode, print, or commit secret values; reference environment variables or the project's secret manager.
+- Never add AI attribution: no Co-Authored-By trailers naming an assistant, no generated-with footers.
+- Never put real personal or confidential data in tests, fixtures, seeds, logs, or examples; use synthetic data.
+- Get explicit approval before force-pushing, rewriting shared history, mass deletion, or production changes."""
 BLOCK = f"{START}\n{RULES}\n{END}"
 SUPPORTED_AGENTS = ("codex", "claude", "opencode", "copilot")
 

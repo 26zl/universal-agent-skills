@@ -44,9 +44,11 @@ The installers are idempotent, support symbolic links or copies, track what they
 ├── .claude-plugin/                 # Claude plugin + marketplace metadata
 ├── .codex-plugin/                  # Codex plugin metadata
 ├── .agents/plugins/marketplace.json
+├── hooks/                          # PreToolUse guard + plugin hook manifest
 ├── install.sh / install.ps1        # Local install, sync, and uninstall
 ├── bootstrap.sh / bootstrap.ps1    # Clone/update + install
 ├── scripts/sync_instructions.py    # Safe global instruction merge/remove
+├── scripts/sync_hooks.py           # Guard hook registration for direct installs
 └── .github/workflows/              # Validation, tests, and scanners
 ```
 
@@ -176,13 +178,63 @@ python3 scripts/sync_agent_stack.py --apply --include-sensitive
 
 Add `--update` to refresh already-installed external plugins. The reconciler never removes plugins that are not in the profile and refuses to replace a marketplace whose source differs. It disables anonymous `skills` CLI telemetry and uses exact package versions plus full commit URLs for portable third-party skills.
 
-The always-on comment rule is merged between ownership markers in `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, and `~/.copilot/copilot-instructions.md`. Existing text is preserved. Audit the managed block with:
+The always-on comment rules and hard rules are merged between ownership markers in `~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, and `~/.copilot/copilot-instructions.md`. Skills load only when an agent chooses to invoke them, so the block carries the subset that must hold on every edit: comment style plus the hard rules from `secret-hygiene`, `no-ai-traces`, `data-minimization`, and `destructive-ops-approval`. Existing text is preserved. Audit the managed block with:
 
 ```bash
 python3 scripts/sync_instructions.py
 ```
 
 Removal for every install path is covered under [Uninstall](#uninstall).
+
+## Enforcement layers
+
+A skill is model-invoked: only its name and description reach the system prompt, and the body loads when the agent decides it is relevant. That fits a task-shaped skill such as `simplify-code`, which the user asks for by name. A passive rule offers no such moment, so it is read past. Three layers cover the difference:
+
+| Layer | Mechanism | Strength |
+| --- | --- | --- |
+| Skill | `skills/<name>/SKILL.md` | Loaded when the agent judges it relevant |
+| Instruction block | `scripts/sync_instructions.py` | Present in every context; can still be reasoned past |
+| Guard hook | `hooks/guard.py` | Blocks the tool call outright |
+
+| Skill | Instruction block | Guard hook |
+| --- | --- | --- |
+| `coding-style` | Comment rules | — |
+| `no-ai-traces` | Yes | Attribution trailers, generated-with footers, robot signatures |
+| `secret-hygiene` | Yes | Known token and private-key shapes |
+| `destructive-ops-approval` | Yes | Force-push, `reset --hard`, history rewrite, remote branch deletion, recursive delete of a root or home path, destructive SQL |
+| `data-minimization` | Yes | — |
+| `supply-chain-pinning` | — | Remote scripts piped into an interpreter |
+| `license-compliance` | — | — |
+| `simplify-code` | — | — |
+| `surgical-implementation` | — | — |
+| `verify-changes` | — | — |
+
+The empty cells are deliberate. Whether a comment earns its place, whether a record is real or synthetic, whether a license is compatible, and whether a change is minimal are judgments no pattern decides; a regex that guessed at them would block correct work and be switched off within a day. Those skills stay advisory.
+
+The guard reads a `PreToolUse` payload and exits 2 to block, returning the reason to the agent. Any malformed input exits 0, so a broken guard never stops legitimate work. Values shaped as placeholders are exempt from the secret rules, which is what the `secret-hygiene` skill already requires of examples.
+
+Destructive commands are blocked rather than forbidden: the block is what forces the approval conversation the skill asks for. After the user approves, the agent re-runs the command prefixed with `UAS_ALLOW=1`, which releases only the destructive rules and leaves the marker visible in the transcript. Secret and attribution rules have no escape hatch.
+
+Command rules match raw text, so a destructive command quoted inside a string — `echo "never run git push --force"` — is blocked as well. The same `UAS_ALLOW=1` prefix clears it. Shell-accurate quote parsing would remove that case at the cost of a parser that fails open on the constructs it does not model, which is the worse trade for a guard.
+
+Plugin installs load `hooks/hooks.json` automatically. A symlink or copy install has no plugin root, so the hook is registered in `~/.claude/settings.json` instead:
+
+```bash
+python3 scripts/sync_hooks.py            # audit
+python3 scripts/sync_hooks.py --apply    # register
+```
+
+The registration is idempotent, preserves hooks it does not own, and is removed with `--uninstall --apply`.
+
+### Portability of each layer
+
+| Layer | Codex | Claude Code | OpenCode | Copilot |
+| --- | --- | --- | --- | --- |
+| Skills | Yes | Yes | Yes | Yes |
+| Instruction block | Yes | Yes | Yes | Yes |
+| Guard hook | No | Yes | No | No |
+
+Only the guard is agent-specific: a `PreToolUse` interception point is a Claude Code feature, and no equivalent is documented for the others in [Agent compatibility](docs/agent-compatibility.md). Everywhere else the instruction block is the strongest available layer, so run `sync_instructions.py` without `--agent` to cover all four rather than the one in front of you.
 
 See [Plugin stack](docs/plugin-stack.md) for the complete inventory, risk notes, and the patterns adopted from the reviewed repositories.
 
@@ -280,6 +332,12 @@ Bootstrap users can rerun the one-liner with `--uninstall`, or call `./install.s
 python3 scripts/sync_instructions.py --apply --uninstall
 ```
 
+### Guard hook
+
+```bash
+python3 scripts/sync_hooks.py --apply --uninstall
+```
+
 ### Native plugin added through a marketplace
 
 `install.sh --uninstall` does not manage native plugins; each client keeps its own registry. Reverse the two install steps with that client's commands:
@@ -325,6 +383,7 @@ python3 scripts/test_sync_agent_stack.py
 python3 scripts/test_sync_instructions.py
 python3 scripts/test_sync_opencode_config.py
 python3 scripts/test_check_pin_freshness.py
+python3 scripts/test_hooks.py
 ./scripts/test-install.sh
 ```
 

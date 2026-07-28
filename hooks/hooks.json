@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v python3 >/dev/null 2>&1 && python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" || exit 0",
+            "commandWindows": "if (Get-Command python -ErrorAction SilentlyContinue) { python \"$env:CLAUDE_PLUGIN_ROOT\\hooks\\guard.py\" }",
+            "timeout": 10,
+            "statusMessage": "Checking always-on rules..."
+          }
+        ]
+      }
+    ]
+  }
+}
