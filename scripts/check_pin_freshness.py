@@ -38,14 +38,24 @@ def find_pins(profile: dict) -> list[tuple[str, str, str, str]]:
         ref = marketplace.get("ref")
         if ref:
             pins.append(
-                ("git", f"codex marketplace {marketplace['name']}", marketplace["source"], ref)
+                (
+                    "git",
+                    f"codex marketplace {marketplace['name']}",
+                    marketplace["source"],
+                    ref,
+                )
             )
     cli = profile.get("skillsCli", {})
     if cli.get("package") and cli.get("version"):
         pins.append(("npm", "skills CLI", cli["package"], cli["version"]))
     for plugin in profile.get("opencode", {}).get("plugins", []):
         pins.append(
-            ("npm", f"opencode plugin {plugin['package']}", plugin["package"], plugin["version"])
+            (
+                "npm",
+                f"opencode plugin {plugin['package']}",
+                plugin["package"],
+                plugin["version"],
+            )
         )
     for installer in profile.get("nativeInstallers", []):
         pins.append(
@@ -61,13 +71,22 @@ def find_pins(profile: dict) -> list[tuple[str, str, str, str]]:
             match = NPM_SPEC_RE.fullmatch(part)
             if match:
                 pins.append(
-                    ("npm", f"MCP server {server['name']}", match["name"], match["version"])
+                    (
+                        "npm",
+                        f"MCP server {server['name']}",
+                        match["name"],
+                        match["version"],
+                    )
                 )
     return pins
 
 
 def latest_git_commit(repository: str) -> str:
-    url = repository if repository.startswith("https://") else f"https://github.com/{repository}"
+    url = (
+        repository
+        if repository.startswith("https://")
+        else f"https://github.com/{repository}"
+    )
     if not url.endswith(".git"):
         url += ".git"
     result = subprocess.run(
@@ -108,7 +127,9 @@ def render(stale, errors, total: int, markdown: bool) -> str:
         lines.append("## Upstream pin updates available")
         lines.append("")
     for label, target, pinned, latest in stale:
-        lines.append(f"- **{label}** (`{target}`): pinned `{pinned}`, upstream `{latest}`")
+        lines.append(
+            f"- **{label}** (`{target}`): pinned `{pinned}`, upstream `{latest}`"
+        )
     for error in errors:
         lines.append(f"- warning: {error}")
     if not stale and not errors:
@@ -125,7 +146,9 @@ def render(stale, errors, total: int, markdown: bool) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Compare profile pins with upstream sources.")
+    parser = argparse.ArgumentParser(
+        description="Compare profile pins with upstream sources."
+    )
     parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--format", choices=("text", "issue"), default="text")
     args = parser.parse_args(argv or sys.argv[1:])

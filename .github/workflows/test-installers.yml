@@ -9,7 +9,10 @@ on:
       - "profiles/**"
       - "skills/**"
       - "scripts/sync_agent_stack.py"
+      - "scripts/sync_hooks.py"
       - "scripts/test-install.*"
+      - "scripts/test_hooks.py"
+      - "hooks/**"
       - ".github/workflows/test-installers.yml"
   push:
     branches: [main]
@@ -32,6 +35,7 @@ jobs:
         with:
           persist-credentials: false
       - run: ./scripts/test-install.sh
+      - run: python3 scripts/test_hooks.py
 
   windows:
     runs-on: windows-latest
@@ -42,3 +46,5 @@ jobs:
           persist-credentials: false
       - shell: pwsh
         run: ./scripts/test-install.ps1
+      - shell: pwsh
+        run: python scripts/test_hooks.py

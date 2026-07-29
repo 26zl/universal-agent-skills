@@ -90,10 +90,13 @@ function Save-InstalledState([object[]]$Entries) {
     Move-Item -LiteralPath $temp -Destination $StateFile -Force
 }
 
-function Test-ManagedCopy([string]$Target) {
+function Test-ManagedCopy([string]$Target, [string]$Source) {
     $marker = Join-Path $Target $MarkerName
     if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $false }
-    return (Get-Content -LiteralPath $marker -TotalCount 1) -eq "managed-by=universal-agent-skills"
+    $lines = @(Get-Content -LiteralPath $marker)
+    return $lines.Count -eq 2 -and
+        $lines[0] -ceq "managed-by=universal-agent-skills" -and
+        $lines[1] -ceq "source=$Source"
 }
 
 function Get-LinkTarget([string]$Target) {
@@ -116,7 +119,7 @@ function Test-OwnedTarget([string]$Target, [string]$Source) {
     if ($null -ne $linkTarget) {
         return $linkTarget -eq [System.IO.Path]::GetFullPath($Source)
     }
-    return Test-ManagedCopy $Target
+    return Test-ManagedCopy $Target $Source
 }
 
 function Invoke-OwnedTargetRemoval([string]$Target, [string]$Source) {

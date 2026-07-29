@@ -36,9 +36,7 @@ class AgentStackTests(unittest.TestCase):
             ),
             [],
         )
-        self.assertTrue(
-            repository_validate.validate_plugin_versions("1.2.3", "1.2.4")
-        )
+        self.assertTrue(repository_validate.validate_plugin_versions("1.2.3", "1.2.4"))
         self.assertTrue(
             repository_validate.validate_plugin_versions(
                 "not-semver", "not-semver", "tag", "vnot-semver"
@@ -56,7 +54,10 @@ class AgentStackTests(unittest.TestCase):
             "https://token@example.com/repository.git"
         )
         self.assertTrue(
-            any("credential-free HTTPS URL" in error for error in stack.validate_profile(profile))
+            any(
+                "credential-free HTTPS URL" in error
+                for error in stack.validate_profile(profile)
+            )
         )
 
     def test_karpathy_legacy_source_is_accepted(self) -> None:
@@ -97,7 +98,10 @@ class AgentStackTests(unittest.TestCase):
         copilot_plugin["enabled"] = False
         copilot_plan = stack.build_copilot_plan(profile, "", "", update=False)
         self.assertFalse(
-            any(copilot_plugin["id"] in action.command for action in copilot_plan.actions)
+            any(
+                copilot_plugin["id"] in action.command
+                for action in copilot_plan.actions
+            )
         )
 
     def test_active_disabled_desired_plugins_are_drift(self) -> None:
@@ -191,8 +195,12 @@ class AgentStackTests(unittest.TestCase):
             update=False,
         )
         commands = [action.command for action in plan.actions]
-        self.assertFalse(any("claude-mem@thedotmack" in command for command in commands))
-        self.assertTrue(any("skipped sensitive plugin" in note for note in plan.notices))
+        self.assertFalse(
+            any("claude-mem@thedotmack" in command for command in commands)
+        )
+        self.assertTrue(
+            any("skipped sensitive plugin" in note for note in plan.notices)
+        )
 
     def test_sensitive_plugin_can_be_planned_explicitly(self) -> None:
         plan = stack.build_claude_plan(
@@ -232,13 +240,15 @@ class AgentStackTests(unittest.TestCase):
             self.profile, cache_root=Path("/tmp/test-agent-stack-cache")
         )
         self.assertEqual(len(actions), 3)
-        self.assertIn("skills@1.5.9", actions[0].command)
+        self.assertIn("skills@1.5.20", actions[0].command)
         self.assertEqual(dict(actions[0].environment)["DISABLE_TELEMETRY"], "1")
         self.assertEqual(
             actions[0].checkout.commit,
             "2c606141936f1eeef17fa3043a72095b4765b9c2",
         )
-        self.assertNotIn(self.profile["portableSkills"][0]["source"], actions[0].command)
+        self.assertNotIn(
+            self.profile["portableSkills"][0]["source"], actions[0].command
+        )
 
     def test_codex_plan_adds_pinned_marketplace_before_plugins(self) -> None:
         plan = stack.build_codex_plan(
@@ -367,7 +377,10 @@ class AgentStackTests(unittest.TestCase):
 
     def test_opencode_plugin_is_exactly_pinned(self) -> None:
         plan = stack.build_opencode_plan(
-            self.profile, '{"plugin": []}', update=False, opencode_command="opencode-test"
+            self.profile,
+            '{"plugin": []}',
+            update=False,
+            opencode_command="opencode-test",
         )
         self.assertEqual(
             plan.actions[0].command,
@@ -383,9 +396,7 @@ class AgentStackTests(unittest.TestCase):
             '{"plugin": ["@dietrichgebert/ponytail@4.8.40"]}',
             '{"plugin": []} // @dietrichgebert/ponytail@4.8.4',
         ):
-            drifted = stack.build_opencode_plan(
-                self.profile, config, update=False
-            )
+            drifted = stack.build_opencode_plan(self.profile, config, update=False)
             self.assertTrue(drifted.drift)
 
     def test_native_ecc_installers_are_target_specific(self) -> None:
@@ -394,7 +405,7 @@ class AgentStackTests(unittest.TestCase):
         )
         self.assertEqual(len(actions), 1)
         self.assertTrue(
-            all("--package=ecc-universal@2.0.0" in action.command for action in actions)
+            all("--package=ecc-universal@2.1.0" in action.command for action in actions)
         )
         self.assertIn("opencode", actions[0].command)
 
@@ -453,16 +464,13 @@ class AgentStackTests(unittest.TestCase):
             profile = {
                 "skillsCli": {
                     "package": "skills",
-                    "version": "1.5.9",
+                    "version": "1.5.20",
                     "disableTelemetry": True,
                 },
                 "portableSkills": [
                     {
                         "name": "fixture-skill",
-                        "source": (
-                            "https://github.com/example/fixture/tree/"
-                            f"{commit}"
-                        ),
+                        "source": (f"https://github.com/example/fixture/tree/{commit}"),
                         "agents": ["codex", "opencode"],
                         "scope": "global",
                     }
@@ -477,16 +485,12 @@ class AgentStackTests(unittest.TestCase):
             target.parent.mkdir(parents=True)
             shutil.copytree(source, target, ignore=shutil.ignore_patterns(".git"))
 
-            current = stack.build_portable_skill_plan(
-                profile, "npx-test", cache, home
-            )
+            current = stack.build_portable_skill_plan(profile, "npx-test", cache, home)
             self.assertEqual(current.drift, [])
             self.assertEqual(current.actions, [])
 
             (target / "SKILL.md").write_text("changed\n", encoding="utf-8")
-            drifted = stack.build_portable_skill_plan(
-                profile, "npx-test", cache, home
-            )
+            drifted = stack.build_portable_skill_plan(profile, "npx-test", cache, home)
             self.assertTrue(any("fixture-skill" in item for item in drifted.drift))
             self.assertEqual(len(drifted.actions), 1)
 
@@ -523,7 +527,7 @@ class AgentStackTests(unittest.TestCase):
                 "--",
                 "npx",
                 "-y",
-                "@upstash/context7-mcp@3.2.4",
+                "@upstash/context7-mcp@3.2.5",
             ),
             commands,
         )
@@ -537,7 +541,10 @@ class AgentStackTests(unittest.TestCase):
             )
         )
         self.assertTrue(
-            any(command[:6] == ("copilot-test", "mcp", "add", "playwright", "--", "npx") for command in commands)
+            any(
+                command[:6] == ("copilot-test", "mcp", "add", "playwright", "--", "npx")
+                for command in commands
+            )
         )
 
     def test_mcp_conflict_requires_update(self) -> None:
@@ -569,21 +576,29 @@ class AgentStackTests(unittest.TestCase):
             "transport": {
                 "type": "stdio",
                 "command": "npx",
-                "args": ["-y", "@upstash/context7-mcp@3.2.4"],
+                "args": ["-y", "@upstash/context7-mcp@3.2.5"],
             },
             "enabled": False,
         }
         context7 = next(
-            server for server in self.profile["mcpServers"] if server["name"] == "context7"
+            server
+            for server in self.profile["mcpServers"]
+            if server["name"] == "context7"
         )
         self.assertFalse(stack.codex_mcp_matches(context7, disabled))
         duplicate = stack.build_mcp_plan(
             self.profile,
-            {"codex": {"context7"}, "opencode": {"context7"}, "copilot": {"context7", "playwright"}},
+            {
+                "codex": {"context7"},
+                "opencode": {"context7"},
+                "copilot": {"context7", "playwright"},
+            },
             profile_path=PROFILE_PATH,
             conflicting_names={"codex": {"context7"}},
         )
-        self.assertTrue(any("codex MCP server differs" in item for item in duplicate.drift))
+        self.assertTrue(
+            any("codex MCP server differs" in item for item in duplicate.drift)
+        )
         self.assertTrue(duplicate.blocking)
 
     def test_opencode_mcp_update_is_aggregated(self) -> None:
@@ -663,12 +678,12 @@ class AgentStackTests(unittest.TestCase):
             {
                 "context7": {
                     "type": "local",
-                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
                     "enabled": True,
                 },
                 "Context7": {
                     "type": "local",
-                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
                     "enabled": True,
                 },
             },
@@ -686,7 +701,7 @@ class AgentStackTests(unittest.TestCase):
               "mcp": {
                 "context7": {
                   "type": "local",
-                  "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                  "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
                   "enabled": true,
                 },
               },
@@ -699,7 +714,11 @@ class AgentStackTests(unittest.TestCase):
     def test_jsonc_drift_blocks_automatic_opencode_merge(self) -> None:
         plan = stack.build_mcp_plan(
             self.profile,
-            {"codex": {"context7"}, "opencode": set(), "copilot": {"context7", "playwright"}},
+            {
+                "codex": {"context7"},
+                "opencode": set(),
+                "copilot": {"context7", "playwright"},
+            },
             profile_path=PROFILE_PATH,
         )
         guarded = stack.guard_jsonc_opencode_plan(
@@ -719,14 +738,16 @@ class AgentStackTests(unittest.TestCase):
 
     def test_mcp_matchers_reject_undeclared_execution_options(self) -> None:
         context7 = next(
-            server for server in self.profile["mcpServers"] if server["name"] == "context7"
+            server
+            for server in self.profile["mcpServers"]
+            if server["name"] == "context7"
         )
         codex = {
             "enabled": True,
             "transport": {
                 "type": "stdio",
                 "command": "npx",
-                "args": ["-y", "@upstash/context7-mcp@3.2.4"],
+                "args": ["-y", "@upstash/context7-mcp@3.2.5"],
                 "env": {"UNDECLARED": "1"},
                 "env_vars": [],
                 "cwd": None,
@@ -735,7 +756,7 @@ class AgentStackTests(unittest.TestCase):
         self.assertFalse(stack.codex_mcp_matches(context7, codex))
         opencode = {
             "type": "local",
-            "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+            "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
             "enabled": True,
             "environment": {"UNDECLARED": "1"},
         }
@@ -743,7 +764,7 @@ class AgentStackTests(unittest.TestCase):
         copilot = {
             "type": "local",
             "command": "npx",
-            "args": ["-y", "@upstash/context7-mcp@3.2.4"],
+            "args": ["-y", "@upstash/context7-mcp@3.2.5"],
             "enabled": True,
             "tools": ["*"],
             "source": "user",
@@ -802,7 +823,11 @@ class AgentStackTests(unittest.TestCase):
 
     def test_planners_tolerate_missing_optional_sections(self) -> None:
         minimal = {
-            "skillsCli": {"package": "skills", "version": "1.5.9", "disableTelemetry": True},
+            "skillsCli": {
+                "package": "skills",
+                "version": "1.5.20",
+                "disableTelemetry": True,
+            },
             "claude": {},
             "codex": {},
             "copilot": {},
@@ -815,9 +840,15 @@ class AgentStackTests(unittest.TestCase):
             ).actions,
             [],
         )
-        self.assertEqual(stack.build_codex_plan(minimal, [], [], update=False).actions, [])
-        self.assertEqual(stack.build_copilot_plan(minimal, "", "", update=False).actions, [])
-        self.assertEqual(stack.build_opencode_plan(minimal, "", update=False).actions, [])
+        self.assertEqual(
+            stack.build_codex_plan(minimal, [], [], update=False).actions, []
+        )
+        self.assertEqual(
+            stack.build_copilot_plan(minimal, "", "", update=False).actions, []
+        )
+        self.assertEqual(
+            stack.build_opencode_plan(minimal, "", update=False).actions, []
+        )
         self.assertEqual(stack.build_vscode_plan(minimal, "").actions, [])
         self.assertEqual(
             stack.build_mcp_plan(minimal, {}, profile_path=PROFILE_PATH).actions, []

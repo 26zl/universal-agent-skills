@@ -1,0 +1,39 @@
+name: Feature request
+description: Propose a focused improvement to the project.
+title: "Feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Note existing workflows or smaller approaches you considered.
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Primary scope
+      options:
+        - Skills
+        - Installer
+        - Agent stack
+        - Guard hooks
+        - Documentation
+        - CI or security
+        - Other
+    validations:
+      required: true

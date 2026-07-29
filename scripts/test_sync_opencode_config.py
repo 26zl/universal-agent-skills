@@ -48,13 +48,11 @@ class OpenCodeConfigTests(unittest.TestCase):
         desired = {
             "context7": {
                 "type": "local",
-                "command": ["npx", "-y", "@upstash/context7-mcp@3.2.4"],
+                "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
                 "enabled": True,
             }
         }
-        updated, changed = sync.merge_config(
-            current, desired, replace_conflicts=True
-        )
+        updated, changed = sync.merge_config(current, desired, replace_conflicts=True)
         self.assertEqual(updated["mcp"]["context7"], desired["context7"])
         self.assertEqual(changed, ["context7"])
 

@@ -48,7 +48,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
         if ":" not in line:
             raise ValueError(f"invalid frontmatter line: {line!r}")
         key, value = line.split(":", 1)
-        metadata[key.strip()] = value.strip().strip('"\'')
+        metadata[key.strip()] = value.strip().strip("\"'")
     return metadata, "\n".join(lines[end + 1 :]).strip()
 
 
@@ -172,18 +172,34 @@ def validate_manifests(skill_names: list[str]) -> list[str]:
     )
 
     prompt = loaded.get(paths[0], {}).get("interface", {}).get("defaultPrompt", [])
-    if not isinstance(prompt, list) or not all(isinstance(line, str) for line in prompt):
+    if not isinstance(prompt, list) or not all(
+        isinstance(line, str) for line in prompt
+    ):
         errors.append(f"{paths[0]}: defaultPrompt must be a list of strings")
     else:
         missing = sorted(set(skill_names) - referenced_skills("\n".join(prompt)))
         if missing:
-            errors.append(f"{paths[0]}: defaultPrompt must mention {', '.join(missing)}")
+            errors.append(
+                f"{paths[0]}: defaultPrompt must mention {', '.join(missing)}"
+            )
 
     codex_market = loaded.get(paths[3], {})
     for plugin in codex_market.get("plugins", []):
+        source = plugin.get("source", {})
+        expected_ref = f"v{codex_version}"
+        if source != {
+            "source": "url",
+            "url": "https://github.com/26zl/universal-agent-skills.git",
+            "ref": expected_ref,
+        }:
+            errors.append(
+                f"{paths[3]}: plugin source must use the versioned public repository URL"
+            )
         policy = plugin.get("policy", {})
         if not {"installation", "authentication"} <= set(policy):
-            errors.append(f"{paths[3]}: every plugin requires installation and authentication policy")
+            errors.append(
+                f"{paths[3]}: every plugin requires installation and authentication policy"
+            )
         if not plugin.get("category"):
             errors.append(f"{paths[3]}: every plugin requires a category")
     return errors
@@ -208,7 +224,9 @@ def validate_adapters() -> list[str]:
         seen.add(agent)
         for value in (global_path, project_path):
             if Path(value).is_absolute() or ".." in Path(value).parts:
-                errors.append(f"{path}:{number}: adapter paths must be safe and relative")
+                errors.append(
+                    f"{path}:{number}: adapter paths must be safe and relative"
+                )
     required = {"codex", "claude", "opencode", "copilot", "universal"}
     if not required <= seen:
         errors.append(f"{path}: missing adapters: {', '.join(sorted(required - seen))}")
@@ -248,10 +266,12 @@ def main() -> int:
             "bootstrap.sh",
             "scripts/check_pin_freshness.py",
             "scripts/sync_agent_stack.py",
+            "scripts/sync_hooks.py",
             "scripts/sync_instructions.py",
             "scripts/sync_opencode_config.py",
             "scripts/test-install.sh",
             "scripts/test_check_pin_freshness.py",
+            "scripts/test_hooks.py",
             "scripts/test_sync_agent_stack.py",
             "scripts/test_sync_instructions.py",
             "scripts/test_sync_opencode_config.py",
@@ -259,6 +279,10 @@ def main() -> int:
             path = ROOT / name
             if path.exists() and not os.access(path, os.X_OK):
                 errors.append(f"{path}: file is not executable")
+
+    for name in ("hooks/guard.py", "hooks/opencode-guard.js"):
+        if not (ROOT / name).is_file():
+            errors.append(f"{ROOT / name}: required guard file is missing")
 
     if errors:
         for error in errors:

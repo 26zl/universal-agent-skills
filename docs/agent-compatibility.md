@@ -26,7 +26,11 @@ OpenCode reads project skills from `.opencode/skills`, `.claude/skills`, and `.a
 
 Global rules live in `~/.config/opencode/AGENTS.md`. The stack profile installs Ponytail through OpenCode's own version-pinned npm-plugin command and ECC through its native OpenCode target.
 
-Sources: [OpenCode Agent Skills](https://opencode.ai/docs/skills), [OpenCode rules](https://opencode.ai/docs/rules).
+Plugins load from `~/.config/opencode/plugins` and `.opencode/plugins`. A plugin's `tool.execute.before` handler runs before each tool call and aborts it by throwing, which is the OpenCode equivalent of a Claude Code `PreToolUse` hook and the second place `hooks/guard.py` is enforced.
+
+The plugin documentation does not enumerate tool names or their argument keys; only `bash` and `read` appear in examples. The guard therefore covers `bash`, `edit`, and `write`, whose argument shapes are observable, and deliberately maps no others. Add a name here only after confirming it against a running OpenCode.
+
+Sources: [OpenCode Agent Skills](https://opencode.ai/docs/skills), [OpenCode rules](https://opencode.ai/docs/rules), [OpenCode plugins](https://opencode.ai/docs/plugins).
 
 ## GitHub Copilot
 

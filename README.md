@@ -44,11 +44,11 @@ The installers are idempotent, support symbolic links or copies, track what they
 ├── .claude-plugin/                 # Claude plugin + marketplace metadata
 ├── .codex-plugin/                  # Codex plugin metadata
 ├── .agents/plugins/marketplace.json
-├── hooks/                          # PreToolUse guard + plugin hook manifest
+├── hooks/                          # Shared guard + Claude Code and OpenCode adapters
 ├── install.sh / install.ps1        # Local install, sync, and uninstall
 ├── bootstrap.sh / bootstrap.ps1    # Clone/update + install
 ├── scripts/sync_instructions.py    # Safe global instruction merge/remove
-├── scripts/sync_hooks.py           # Guard hook registration for direct installs
+├── scripts/sync_hooks.py           # Guard registration for direct installs
 └── .github/workflows/              # Validation, tests, and scanners
 ```
 
@@ -107,23 +107,27 @@ Install into the current project instead of the user profile:
 
 Without `--project-dir` the current directory is used; PowerShell accepts the same through `-Scope project -ProjectDir`. Project installations land in the project's own discovery paths (`.claude/skills`, `.agents/skills`, `.opencode/skills`) and are tracked separately from global installations. Prefer `--mode copy` for shared projects because symbolic links point into your local clone.
 
-## Bootstrap one-liner for macOS and Linux
+## Reviewed bootstrap for macOS and Linux
 
 Pin a full commit for immutable installs, or use a protected release tag for release-oriented installs:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.4/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.4
+bootstrap=$(mktemp)
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.5/bootstrap.sh -o "$bootstrap"
+less "$bootstrap"
+sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.5
+rm -f "$bootstrap"
 ```
 
-For a rolling installation that follows `main`, change both occurrences of `v0.3.4` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
+For a rolling installation that follows `main`, change both occurrences of `v0.3.5` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
 
-Add `--with-agent-stack` to reconcile the complete declared stack: Claude plugins, Codex and Copilot CLI plugins, the OpenCode Ponytail plugin, the VS Code Copilot extension, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
+To reconcile the complete declared stack, replace the `sh "$bootstrap"` line above with the following command before removing the temporary file. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.4/bootstrap.sh | sh -s -- --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.4 --with-agent-stack --include-sensitive-plugins
+sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.5 --with-agent-stack --include-sensitive-plugins
 ```
 
-Piping remote code into a shell trades reviewability for convenience. For higher assurance, download the script, inspect it, and execute it from disk. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
+The complete stack includes Claude, Codex, Copilot CLI, OpenCode and VS Code integrations, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
 
 Agent-stack reconciliation requires Python 3.9 or newer. Direct repository-skill installation does not require Python.
 
@@ -138,7 +142,7 @@ From a clone:
 Pinned remote bootstrap in one line:
 
 ```powershell
-$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.3.4/bootstrap.ps1" -OutFile $file; & $file -Repo "$repo.git" -Ref v0.3.4
+$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.3.5/bootstrap.ps1" -OutFile $file; Get-Content $file; & $file -Repo "$repo.git" -Ref v0.3.5
 ```
 
 PowerShell `auto` mode tries symbolic links first and falls back to copies when Windows Developer Mode or sufficient privileges are unavailable.
@@ -156,7 +160,7 @@ The canonical profile reflects the current Claude setup plus `claude-mem` and `h
 - Copilot CLI Ponytail plus the VS Code extension, repository instructions, shared skills, Context7, and Playwright.
 - Ponytail and ECC through their native OpenCode integrations.
 
-ECC's native Codex target is intentionally not automated because ECC 2.0.0 writes the complete `~/.codex/config.toml`, even when narrower workflow modules are requested. Portable skills, Codex-native plugins, and MCP mappings provide the safe Codex layer without replacing unrelated user settings.
+ECC's native Codex target is intentionally not automated because it writes the complete `~/.codex/config.toml`, even when narrower workflow modules are requested. Portable skills, Codex-native plugins, and MCP mappings provide the safe Codex layer without replacing unrelated user settings.
 
 Audit without changing the machine:
 
@@ -213,18 +217,23 @@ The empty cells are deliberate. Whether a comment earns its place, whether a rec
 
 The guard reads a `PreToolUse` payload and exits 2 to block, returning the reason to the agent. Any malformed input exits 0, so a broken guard never stops legitimate work. Values shaped as placeholders are exempt from the secret rules, which is what the `secret-hygiene` skill already requires of examples.
 
-Destructive commands are blocked rather than forbidden: the block is what forces the approval conversation the skill asks for. After the user approves, the agent re-runs the command prefixed with `UAS_ALLOW=1`, which releases only the destructive rules and leaves the marker visible in the transcript. Secret and attribution rules have no escape hatch.
+Destructive commands are blocked rather than forbidden: the block is what forces the approval conversation the skill asks for. After the user approves, the agent re-runs the command prefixed with `UAS_ALLOW=1`, which releases only the destructive rules and leaves the marker visible in the transcript.
+
+Documentation and tests have to be able to quote a violation, so a `uas-allow` marker exempts a single match on its own line or the line directly above it. Never a file, and never a whole block. It is the honest form of an escape that splitting a literal already provided invisibly — a reviewer can grep for the marker but not for a broken-up constant.
+
+Prefer the marker on its own line above the quoted violation. A code formatter that reflows arguments relocates a trailing comment, which is why the preceding line counts at all.
 
 Command rules match raw text, so a destructive command quoted inside a string — `echo "never run git push --force"` — is blocked as well. The same `UAS_ALLOW=1` prefix clears it. Shell-accurate quote parsing would remove that case at the cost of a parser that fails open on the constructs it does not model, which is the worse trade for a guard.
 
-Plugin installs load `hooks/hooks.json` automatically. A symlink or copy install has no plugin root, so the hook is registered in `~/.claude/settings.json` instead:
+Claude Code plugin installs load `hooks/hooks.json` automatically. A symlink or copy install has no plugin root, so the hook is registered in `~/.claude/settings.json` instead. OpenCode loads a shim from its plugin directory that re-exports the plugin from this checkout:
 
 ```bash
-python3 scripts/sync_hooks.py            # audit
-python3 scripts/sync_hooks.py --apply    # register
+python3 scripts/sync_hooks.py                      # audit both
+python3 scripts/sync_hooks.py --apply              # register both
+python3 scripts/sync_hooks.py --agent opencode     # limit to one
 ```
 
-The registration is idempotent, preserves hooks it does not own, and is removed with `--uninstall --apply`.
+Registration is idempotent, preserves hooks it does not own, refuses to replace an unmanaged plugin file, and is removed with `--uninstall --apply`.
 
 ### Portability of each layer
 
@@ -232,9 +241,11 @@ The registration is idempotent, preserves hooks it does not own, and is removed 
 | --- | --- | --- | --- | --- |
 | Skills | Yes | Yes | Yes | Yes |
 | Instruction block | Yes | Yes | Yes | Yes |
-| Guard hook | No | Yes | No | No |
+| Guard | No | Yes | Yes | No |
 
-Only the guard is agent-specific: a `PreToolUse` interception point is a Claude Code feature, and no equivalent is documented for the others in [Agent compatibility](docs/agent-compatibility.md). Everywhere else the instruction block is the strongest available layer, so run `sync_instructions.py` without `--agent` to cover all four rather than the one in front of you.
+The guard reaches as far as each agent offers an interception point: Claude Code through a `PreToolUse` hook, OpenCode through a plugin's `tool.execute.before`. Codex and Copilot CLI document no equivalent in [Agent compatibility](docs/agent-compatibility.md), so the instruction block is the strongest layer there — run `sync_instructions.py` without `--agent` to cover all four rather than the one in front of you.
+
+Both guards run the same `hooks/guard.py`; `hooks/opencode-guard.js` only maps OpenCode's tool names and camel-cased arguments onto the same payload. Keeping one rule set in one language is what stops the two from drifting apart. On OpenCode the mapping covers `bash`, `edit`, and `write`, the tools whose argument shapes its documentation makes observable.
 
 See [Plugin stack](docs/plugin-stack.md) for the complete inventory, risk notes, and the patterns adopted from the reviewed repositories.
 

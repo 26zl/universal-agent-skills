@@ -50,7 +50,7 @@ The profile does not pretend that plugin formats or hook lifecycles are intercha
 - leaves unknown plugins untouched;
 - refuses automatic marketplace source replacement;
 - excludes sensitive plugins unless `--include-sensitive` is explicit;
-- installs portable skills through the exact `skills@1.5.9` CLI with telemetry disabled;
+- installs portable skills through the exact `skills@1.5.20` CLI with telemetry disabled;
 - fetches each portable source at a full Git commit, verifies a clean checkout, and installs from that local cache.
 
 `scripts/sync_instructions.py` merges one short, ownership-marked rule block into each client's documented personal instruction file. It preserves unrelated content, rejects malformed markers, supports dry-run/check/uninstall, and never copies conversation history into instructions.
@@ -59,7 +59,7 @@ The block deliberately duplicates a small part of the skills. Skills are model-i
 
 The reconciler is additive and intentionally has no external-stack uninstall mode because the same plugins may predate this repository. Use the relevant upstream manager to remove an external plugin after reviewing its stored data and shared dependencies. The repository-owned skills still support tracked `--uninstall` through `install.sh` and `install.ps1`.
 
-ECC 2.0.0's Codex target resolves `platform-configs` even for narrower agent/workflow module selections and writes `~/.codex/config.toml`. The default profile therefore does not run that target: doing so could replace unrelated Codex marketplaces, plugins, MCP servers, approval settings, or personal configuration. The OpenCode target remains enabled because it installs into ECC's separate `~/.opencode` adapter root. Users who deliberately want the native Codex target should run ECC directly after backing up and reviewing their Codex configuration.
+ECC's native Codex target resolves `platform-configs` even for narrower agent/workflow module selections and writes `~/.codex/config.toml`. The default profile therefore does not run that target: doing so could replace unrelated Codex marketplaces, plugins, MCP servers, approval settings, or personal configuration. The OpenCode target remains enabled because it installs into ECC's separate `~/.opencode` adapter root. Users who deliberately want the native Codex target should run ECC directly after backing up and reviewing their Codex configuration.
 
 Claude marketplace updates remain upstream-controlled. In particular, the current external MCP definitions for Context7, Chrome DevTools, and Playwright use unpinned or `latest` npm references. Use `--update` deliberately and inspect upstream changes before broad rollout.
 

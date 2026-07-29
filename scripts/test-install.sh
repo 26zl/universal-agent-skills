@@ -58,6 +58,13 @@ target="$UAS_HOME/.agents/skills/coding-style"
 cmp "$ROOT/skills/coding-style/SKILL.md" "$target/SKILL.md" >/dev/null || fail "copied skill differs"
 sh "$ROOT/install.sh" --mode copy --agents codex --skill coding-style
 
+printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$TEMP_ROOT/foreign-source" \
+  > "$target/.uas-managed"
+sh "$ROOT/install.sh" --uninstall --agents codex --skill coding-style 2>/dev/null
+[ -f "$target/SKILL.md" ] || fail "uninstall removed a copy owned by another source"
+printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$ROOT/skills/coding-style" \
+  > "$target/.uas-managed"
+
 fail_bin="$TEMP_ROOT/fail-bin"
 mkdir -p "$fail_bin"
 printf '%s\n' '#!/bin/sh' 'exit 1' > "$fail_bin/cp"

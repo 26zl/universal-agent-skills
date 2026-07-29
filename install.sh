@@ -304,7 +304,13 @@ state_record() {
 }
 
 is_managed_copy() {
-  [ -f "$1/.uas-managed" ] && grep -qx 'managed-by=universal-agent-skills' "$1/.uas-managed"
+  target=$1
+  source=$2
+  marker="$target/.uas-managed"
+  [ -f "$marker" ] || return 1
+  [ "$(sed -n '1p' "$marker")" = 'managed-by=universal-agent-skills' ] &&
+    [ "$(sed -n '2p' "$marker")" = "source=$source" ] &&
+    [ "$(wc -l < "$marker" | tr -d ' ')" -eq 2 ]
 }
 
 is_owned_target() {
@@ -313,7 +319,7 @@ is_owned_target() {
   if [ -L "$target" ]; then
     [ "$(readlink "$target")" = "$source" ]
   else
-    is_managed_copy "$target"
+    is_managed_copy "$target" "$source"
   fi
 }
 

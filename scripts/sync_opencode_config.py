@@ -71,7 +71,9 @@ def atomic_write(path: Path, value: dict[str, Any]) -> None:
         path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     existing_mode = path.stat().st_mode if path.exists() else None
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
@@ -111,9 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     path = config_path(home)
     try:
         profile = json.loads(args.profile.read_text(encoding="utf-8"))
-        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
-            "$schema": "https://opencode.ai/config.json"
-        }
+        current = (
+            json.loads(path.read_text(encoding="utf-8"))
+            if path.exists()
+            else {"$schema": "https://opencode.ai/config.json"}
+        )
         if not isinstance(current, dict):
             raise ValueError("OpenCode config must be a JSON object")
         updated, changed = merge_config(

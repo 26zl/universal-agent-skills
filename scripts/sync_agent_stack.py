@@ -24,23 +24,19 @@ import sync_instructions as instruction_sync
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = ROOT / "profiles" / "default.json"
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-PLUGIN_ID_RE = re.compile(
-    r"^[a-z0-9]+(?:-[a-z0-9]+)*@[a-z0-9]+(?:-[a-z0-9]+)*$"
-)
+PLUGIN_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*@[a-z0-9]+(?:-[a-z0-9]+)*$")
 PINNED_GITHUB_RE = re.compile(
     r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/"
     r"(?P<repo>[A-Za-z0-9_.-]+)/tree/(?P<commit>[0-9a-f]{40})$"
 )
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-NPM_PACKAGE_RE = re.compile(
-    r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$"
-)
+NPM_PACKAGE_RE = re.compile(r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
 EXECUTABLE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-VSCODE_EXTENSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9][A-Za-z0-9._-]*$")
-GITHUB_SHORTHAND_RE = re.compile(
-    r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?$"
+VSCODE_EXTENSION_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9][A-Za-z0-9._-]*$"
 )
+GITHUB_SHORTHAND_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?$")
 ALLOWED_RISKS = {"standard", "elevated", "sensitive"}
 ALLOWED_SKILL_AGENTS = {"claude-code", "codex", "opencode"}
 ALLOWED_MCP_AGENTS = {"codex", "opencode", "copilot"}
@@ -187,7 +183,9 @@ def validate_profile(profile: dict[str, Any]) -> list[str]:
         if not isinstance(explicit, bool):
             errors.append(f"{prefix}.requiresExplicitOptIn must be a boolean")
         if explicit and plugin.get("risk") != "sensitive":
-            errors.append(f"{prefix} can require explicit opt-in only when risk is sensitive")
+            errors.append(
+                f"{prefix} can require explicit opt-in only when risk is sensitive"
+            )
 
     codex = profile.get("codex")
     if not isinstance(codex, dict):
@@ -279,8 +277,13 @@ def validate_profile(profile: dict[str, Any]) -> list[str]:
                 errors.append(f"{prefix}.url must be a credential-free HTTPS URL")
         elif transport == "stdio":
             command = server.get("command")
-            if not isinstance(command, list) or not command or not all(
-                isinstance(item, str) and item and "\x00" not in item for item in command
+            if (
+                not isinstance(command, list)
+                or not command
+                or not all(
+                    isinstance(item, str) and item and "\x00" not in item
+                    for item in command
+                )
             ):
                 errors.append(f"{prefix}.command must contain non-empty strings")
         else:
@@ -351,7 +354,9 @@ def validate_profile(profile: dict[str, Any]) -> list[str]:
         else:
             portable_names.add(name)
         if not PINNED_GITHUB_RE.fullmatch(str(skill.get("source", ""))):
-            errors.append(f"{prefix}.source must be a GitHub URL pinned to a full commit")
+            errors.append(
+                f"{prefix}.source must be a GitHub URL pinned to a full commit"
+            )
         agents = skill.get("agents")
         if not isinstance(agents, list) or not agents:
             errors.append(f"{prefix}.agents must be a non-empty array")
@@ -418,7 +423,9 @@ def validate_native_plugin_section(
             plugin_ids.add(plugin_id)
         if "@" in plugin_id:
             market_name = plugin_id.rsplit("@", 1)[1]
-            if market_name not in marketplace_names and not market_name.startswith("openai-"):
+            if market_name not in marketplace_names and not market_name.startswith(
+                "openai-"
+            ):
                 errors.append(f"{prefix}.id references an undeclared marketplace")
         if not isinstance(plugin.get("enabled"), bool):
             errors.append(f"{prefix}.enabled must be a boolean")
@@ -588,7 +595,9 @@ def source_cache_root() -> Path:
 def pinned_checkout(skill: dict[str, Any], cache_root: Path) -> PinnedCheckout:
     match = PINNED_GITHUB_RE.fullmatch(skill["source"])
     if match is None:
-        raise ValueError(f"portable skill {skill['name']} does not have a pinned source")
+        raise ValueError(
+            f"portable skill {skill['name']} does not have a pinned source"
+        )
     owner = match.group("owner")
     repo = match.group("repo").removesuffix(".git")
     commit = match.group("commit")
@@ -679,7 +688,9 @@ def build_claude_plan(
     for plugin in desired_plugins:
         plugin_id = plugin["id"]
         market_name = plugin_id.rsplit("@", 1)[1]
-        sensitive_blocked = plugin.get("requiresExplicitOptIn", False) and not include_sensitive
+        sensitive_blocked = (
+            plugin.get("requiresExplicitOptIn", False) and not include_sensitive
+        )
         current = current_plugin_map.get(plugin_id)
         if not plugin["enabled"]:
             if current is not None:
@@ -712,7 +723,14 @@ def build_claude_plan(
                 actions.append(
                     Action(
                         f"install Claude plugin {plugin_id}",
-                        (claude_command, "plugin", "install", plugin_id, "--scope", "user"),
+                        (
+                            claude_command,
+                            "plugin",
+                            "install",
+                            plugin_id,
+                            "--scope",
+                            "user",
+                        ),
                     )
                 )
             continue
@@ -738,9 +756,7 @@ def build_claude_plan(
     desired_ids = {item["id"] for item in desired_plugins}
     extras = sorted(set(current_plugin_map) - desired_ids)
     if extras:
-        notices.append(
-            "left unlisted Claude plugins unchanged: " + ", ".join(extras)
-        )
+        notices.append("left unlisted Claude plugins unchanged: " + ", ".join(extras))
     return Plan(actions, notices, drift, blocking)
 
 
@@ -759,9 +775,7 @@ def build_codex_plan(
     blocked_markets: set[str] = set()
     replaced_markets: set[str] = set()
     desired = profile["codex"]
-    desired_markets = {
-        item["name"]: item for item in desired.get("marketplaces", [])
-    }
+    desired_markets = {item["name"]: item for item in desired.get("marketplaces", [])}
     current_markets: dict[str, dict[str, Any]] = {}
     for item in current_marketplaces:
         name = item.get("name")
@@ -838,7 +852,7 @@ def build_codex_plan(
                         "--ref",
                         marketplace["ref"],
                     ),
-                )
+                ),
             )
         )
 
@@ -1048,8 +1062,12 @@ def build_opencode_plan(
             entry == package or entry.startswith(f"{package}@") for entry in entries
         )
         if unpinned and not update:
-            drift.append(f"OpenCode plugin is not pinned to {plugin['version']}: {package}")
-            notices.append(f"pass --update to replace the OpenCode plugin pin for {package}")
+            drift.append(
+                f"OpenCode plugin is not pinned to {plugin['version']}: {package}"
+            )
+            notices.append(
+                f"pass --update to replace the OpenCode plugin pin for {package}"
+            )
             continue
         drift.append(f"missing or outdated OpenCode plugin: {pinned}")
         command = [opencode_command, "plugin", pinned, "--global"]
@@ -1515,15 +1533,15 @@ def guard_jsonc_opencode_plan(
     actions = [
         action
         for action in plan.actions
-        if not any(
-            part.endswith("sync_opencode_config.py") for part in action.command
-        )
+        if not any(part.endswith("sync_opencode_config.py") for part in action.command)
     ]
     message = (
         "OpenCode MCP drift requires a manual JSONC-preserving merge; "
         "automatic apply supports plain JSON only"
     )
-    return Plan(actions, [*plan.notices, message], plan.drift, [*plan.blocking, message])
+    return Plan(
+        actions, [*plan.notices, message], plan.drift, [*plan.blocking, message]
+    )
 
 
 def copilot_mcp_inventory(
@@ -1531,9 +1549,7 @@ def copilot_mcp_inventory(
 ) -> tuple[set[str], set[str]]:
     if not isinstance(value, dict) or not isinstance(value.get("mcpServers"), dict):
         raise RuntimeError("Copilot MCP list returned an unexpected JSON shape")
-    return mcp_inventory(
-        profile, "copilot", value["mcpServers"], copilot_mcp_matches
-    )
+    return mcp_inventory(profile, "copilot", value["mcpServers"], copilot_mcp_matches)
 
 
 def build_portable_skill_actions(
@@ -1660,9 +1676,7 @@ def frontmatter_skill_name(path: Path) -> str | None:
     except ValueError:
         return None
     for line in lines[1:end]:
-        match = re.fullmatch(
-            r"name:\s*([a-z0-9]+(?:-[a-z0-9]+)*)\s*", line
-        )
+        match = re.fullmatch(r"name:\s*([a-z0-9]+(?:-[a-z0-9]+)*)\s*", line)
         if match:
             return match.group(1)
     return None
@@ -1703,9 +1717,7 @@ def build_portable_skill_plan(
 ) -> Plan:
     resolved_cache = cache_root or source_cache_root()
     resolved_home = home or Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
-    planned_actions = build_portable_skill_actions(
-        profile, npx_command, resolved_cache
-    )
+    planned_actions = build_portable_skill_actions(profile, npx_command, resolved_cache)
     actions: list[Action] = []
     drift: list[str] = []
     blocking: list[str] = []
@@ -1735,10 +1747,9 @@ def build_portable_skill_plan(
             if target.is_symlink():
                 matches = target.resolve() == source.resolve()
             else:
-                matches = (
-                    target.is_dir()
-                    and directory_snapshot(target) == directory_snapshot(source)
-                )
+                matches = target.is_dir() and directory_snapshot(
+                    target
+                ) == directory_snapshot(source)
         except OSError as exc:
             message = f"portable skill {name} cannot be verified: {exc}"
             drift.append(message)
@@ -1760,7 +1771,9 @@ def build_instruction_plan(home: Path | None = None) -> Plan:
             )
             _, changed = instruction_sync.replace_block(current, uninstall=False)
         except (OSError, UnicodeError, ValueError) as exc:
-            raise RuntimeError(f"cannot audit {target.agent} instructions: {exc}") from exc
+            raise RuntimeError(
+                f"cannot audit {target.agent} instructions: {exc}"
+            ) from exc
         if changed:
             drift.append(f"global instructions differ for {target.agent}")
     actions: list[Action] = []
@@ -1812,13 +1825,17 @@ def run_json(command: list[str]) -> list[dict[str, Any]]:
     return value
 
 
-def run_checked(command: list[str], *, environment: dict[str, str] | None = None) -> None:
+def run_checked(
+    command: list[str], *, environment: dict[str, str] | None = None
+) -> None:
     try:
         subprocess.run(command, check=True, env=environment)
     except FileNotFoundError as exc:
         raise RuntimeError(f"required command not found: {command[0]}") from exc
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"command failed ({exc.returncode}): {shlex.join(command)}") from exc
+        raise RuntimeError(
+            f"command failed ({exc.returncode}): {shlex.join(command)}"
+        ) from exc
 
 
 def ensure_pinned_checkout(checkout: PinnedCheckout, git_command: str = "git") -> None:
@@ -1834,7 +1851,15 @@ def ensure_pinned_checkout(checkout: PinnedCheckout, git_command: str = "git") -
     try:
         run_checked([git_command, "init", "-q", str(temporary)])
         run_checked(
-            [git_command, "-C", str(temporary), "remote", "add", "origin", checkout.repository]
+            [
+                git_command,
+                "-C",
+                str(temporary),
+                "remote",
+                "add",
+                "origin",
+                checkout.repository,
+            ]
         )
         run_checked(
             [
@@ -1849,7 +1874,15 @@ def ensure_pinned_checkout(checkout: PinnedCheckout, git_command: str = "git") -
             ]
         )
         run_checked(
-            [git_command, "-C", str(temporary), "checkout", "-q", "--detach", "FETCH_HEAD"]
+            [
+                git_command,
+                "-C",
+                str(temporary),
+                "checkout",
+                "-q",
+                "--detach",
+                "FETCH_HEAD",
+            ]
         )
         result = subprocess.run(
             [git_command, "-C", str(temporary), "rev-parse", "HEAD"],
@@ -1862,7 +1895,9 @@ def ensure_pinned_checkout(checkout: PinnedCheckout, git_command: str = "git") -
                 f"fetched commit does not match requested pin for {checkout.repository}"
             )
         if target.exists() or target.is_symlink():
-            raise RuntimeError(f"portable-skill cache path appeared during install: {target}")
+            raise RuntimeError(
+                f"portable-skill cache path appeared during install: {target}"
+            )
         temporary.replace(target)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeError(f"failed to create pinned checkout: {target}") from exc
@@ -1886,7 +1921,9 @@ def print_plan(plan: Plan, apply: bool) -> None:
         print(f"note: {item}")
     for action in plan.actions:
         prefix = "run" if apply else "would run"
-        env_prefix = " ".join(f"{key}={shlex.quote(value)}" for key, value in action.environment)
+        env_prefix = " ".join(
+            f"{key}={shlex.quote(value)}" for key, value in action.environment
+        )
         command = shlex.join(action.command)
         rendered = f"{env_prefix} {command}".strip()
         if action.checkout is not None:
@@ -1902,8 +1939,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         description="Audit or reconcile the declared cross-agent plugin and skill stack."
     )
     parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
-    parser.add_argument("--apply", action="store_true", help="Perform the planned changes")
-    parser.add_argument("--update", action="store_true", help="Update configured external plugins")
+    parser.add_argument(
+        "--apply", action="store_true", help="Perform the planned changes"
+    )
+    parser.add_argument(
+        "--update", action="store_true", help="Update configured external plugins"
+    )
     parser.add_argument(
         "--include-sensitive",
         action="store_true",
@@ -1930,7 +1971,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Exit non-zero when selected stack state drifts",
     )
-    parser.add_argument("--validate-only", action="store_true", help="Validate the profile without tools")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate the profile without tools",
+    )
     parser.add_argument(
         "--claude-command",
         default=os.environ.get("UAS_CLAUDE_COMMAND", "claude"),
@@ -2003,11 +2048,7 @@ def main(argv: list[str] | None = None) -> int:
         if "native" in components:
             native_plan = build_native_plan(profile, args.npx_command)
             native_actions = native_plan.actions
-            if (
-                args.apply
-                and native_actions
-                and shutil.which(args.npx_command) is None
-            ):
+            if args.apply and native_actions and shutil.which(args.npx_command) is None:
                 raise RuntimeError(f"required command not found: {args.npx_command}")
             plans.append(native_plan)
         native_resets_codex = any(
@@ -2043,11 +2084,15 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(marketplace_value, dict) or not isinstance(
                 marketplace_value.get("marketplaces"), list
             ):
-                raise RuntimeError("Codex marketplace list returned an unexpected JSON shape")
+                raise RuntimeError(
+                    "Codex marketplace list returned an unexpected JSON shape"
+                )
             if not isinstance(plugin_value, dict) or not isinstance(
                 plugin_value.get("installed"), list
             ):
-                raise RuntimeError("Codex plugin list returned an unexpected JSON shape")
+                raise RuntimeError(
+                    "Codex plugin list returned an unexpected JSON shape"
+                )
             plans.append(
                 build_codex_plan(
                     profile,
@@ -2059,13 +2104,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         if "copilot" in components:
             if shutil.which(args.copilot_command) is None:
-                raise RuntimeError(f"required command not found: {args.copilot_command}")
+                raise RuntimeError(
+                    f"required command not found: {args.copilot_command}"
+                )
             plans.append(
                 build_copilot_plan(
                     profile,
-                    run_output(
-                        [args.copilot_command, "plugin", "marketplace", "list"]
-                    ),
+                    run_output([args.copilot_command, "plugin", "marketplace", "list"]),
                     run_output([args.copilot_command, "plugin", "list"]),
                     update=args.update,
                     copilot_command=args.copilot_command,
@@ -2073,7 +2118,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         if "opencode" in components:
             if shutil.which(args.opencode_command) is None:
-                raise RuntimeError(f"required command not found: {args.opencode_command}")
+                raise RuntimeError(
+                    f"required command not found: {args.opencode_command}"
+                )
             config = opencode_config_path()
             config_text = config.read_text(encoding="utf-8") if config.exists() else ""
             plans.append(
@@ -2112,13 +2159,19 @@ def main(argv: list[str] | None = None) -> int:
             }
             for agent in required_mcp_agents:
                 if shutil.which(mcp_commands[agent]) is None:
-                    raise RuntimeError(f"required command not found: {mcp_commands[agent]}")
+                    raise RuntimeError(
+                        f"required command not found: {mcp_commands[agent]}"
+                    )
             current_names: dict[str, set[str]] = {}
             conflicting_names: dict[str, set[str]] = {}
             if "codex" in required_mcp_agents:
-                codex_mcp = run_json_value([args.codex_command, "mcp", "list", "--json"])
+                codex_mcp = run_json_value(
+                    [args.codex_command, "mcp", "list", "--json"]
+                )
                 if not isinstance(codex_mcp, list):
-                    raise RuntimeError("Codex MCP list returned an unexpected JSON shape")
+                    raise RuntimeError(
+                        "Codex MCP list returned an unexpected JSON shape"
+                    )
                 if native_resets_codex:
                     current_names["codex"] = set()
                 else:
@@ -2142,7 +2195,9 @@ def main(argv: list[str] | None = None) -> int:
                             conflicting_names["codex"].add(name)
             if "opencode" in required_mcp_agents:
                 config = opencode_config_path()
-                config_text = config.read_text(encoding="utf-8") if config.exists() else ""
+                config_text = (
+                    config.read_text(encoding="utf-8") if config.exists() else ""
+                )
                 (
                     current_names["opencode"],
                     conflicting_names["opencode"],
@@ -2153,9 +2208,7 @@ def main(argv: list[str] | None = None) -> int:
                     conflicting_names["copilot"],
                 ) = copilot_mcp_inventory(
                     profile,
-                    run_json_value(
-                        [args.copilot_command, "mcp", "list", "--json"]
-                    ),
+                    run_json_value([args.copilot_command, "mcp", "list", "--json"]),
                 )
             mcp_plan = build_mcp_plan(
                 profile,

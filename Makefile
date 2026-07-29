@@ -6,6 +6,10 @@ validate:
 	python3 scripts/test_sync_instructions.py
 	python3 scripts/test_sync_opencode_config.py
 	python3 scripts/test_check_pin_freshness.py
+	python3 scripts/test_hooks.py
+	ruff check --select E4,E7,E9,F .
+	ruff format --check .
+	node --check hooks/opencode-guard.js
 	sh -n install.sh bootstrap.sh scripts/test-install.sh
 
 test: validate

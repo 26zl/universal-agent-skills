@@ -4,7 +4,7 @@
   "description": "Personal cross-agent stack for Claude Code, Codex, OpenCode, and GitHub Copilot.",
   "skillsCli": {
     "package": "skills",
-    "version": "1.5.9",
+    "version": "1.5.20",
     "disableTelemetry": true
   },
   "claude": {
@@ -232,7 +232,7 @@
       "command": [
         "npx",
         "-y",
-        "@upstash/context7-mcp@3.2.4"
+        "@upstash/context7-mcp@3.2.5"
       ],
       "agents": [
         "codex",
@@ -261,7 +261,7 @@
     {
       "name": "ecc-opencode",
       "package": "ecc-universal",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "executable": "ecc-install",
       "statePath": ".opencode/ecc-install-state.json",
       "arguments": [
@@ -295,7 +295,7 @@
     },
     {
       "name": "frontend-design",
-      "source": "https://github.com/anthropics/claude-plugins-official/tree/8271e720df2580c5a16badfc802753798bf56759",
+      "source": "https://github.com/anthropics/claude-plugins-official/tree/df098247831a98731abfc96b4b1298292f03e9c6",
       "agents": [
         "codex",
         "opencode"

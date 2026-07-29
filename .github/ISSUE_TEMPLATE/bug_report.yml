@@ -1,0 +1,68 @@
+name: Bug report
+description: Report reproducible behavior that does not work as documented.
+title: "Bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private prompts, or sensitive logs.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest safe sequence that reproduces the problem.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Project version
+      placeholder: v0.3.5 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Agent or platform
+      multiple: true
+      options:
+        - Codex
+        - Claude Code
+        - OpenCode
+        - GitHub Copilot
+        - POSIX installer
+        - PowerShell installer
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant tool, operating system, shell, and Python versions.
+  - type: textarea
+    id: output
+    attributes:
+      label: Sanitized output
+      description: Remove credentials, personal data, and confidential paths before pasting output.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I removed secrets and private data from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

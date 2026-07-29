@@ -34,6 +34,16 @@ try {
     Assert-True (-not (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/simplify-code"))) "Copilot alias uninstall failed"
 
     $conflictTarget = Join-Path $env:UAS_HOME ".agents/skills/coding-style"
+    & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -Skill coding-style
+    $marker = Join-Path $conflictTarget ".uas-managed"
+    @("managed-by=universal-agent-skills", "source=$(Join-Path $TempRoot 'foreign-source')") |
+        Set-Content -LiteralPath $marker -Encoding UTF8
+    & (Join-Path $Root "install.ps1") -Uninstall -Agents codex -Skill coding-style 3>$null
+    Assert-True (Test-Path (Join-Path $conflictTarget "SKILL.md")) "Uninstall removed a copy owned by another source"
+    @("managed-by=universal-agent-skills", "source=$(Join-Path $Root 'skills/coding-style')") |
+        Set-Content -LiteralPath $marker -Encoding UTF8
+    & (Join-Path $Root "install.ps1") -Uninstall -Agents codex -Skill coding-style
+
     New-Item -ItemType Directory -Path $conflictTarget -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $conflictTarget "owner.txt") -Value "unmanaged"
     $conflictRejected = $false

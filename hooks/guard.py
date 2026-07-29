@@ -18,6 +18,10 @@ BLOCK = 2
 # approval visible in the transcript instead of silently relaxing the guard.
 ALLOW = re.compile(r"\bUAS_ALLOW=1\b")
 
+# Documentation and tests must be able to quote a violation. A marker on the same
+# line exempts that one match and stays greppable, unlike splitting the literal.
+ALLOW_INLINE = "uas-allow"
+
 # Values shaped so they cannot validate against a real service are the documented
 # way to write examples, so they must not trip the secret rules.
 PLACEHOLDER = re.compile(
@@ -37,44 +41,108 @@ SECRETS = (
     (re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"), "private key"),
 )
 
-AI_VENDORS = r"claude|anthropic|chatgpt|gpt-[0-9]|openai|copilot|codex|cursor|gemini|devin"
+AI_VENDOR_NAMES = (
+    "claude",
+    "anthropic",
+    "chatgpt",
+    "gpt-[0-9]",
+    "openai",
+    "copilot",
+    "codex",
+    "cursor",
+    "gemini",
+    "devin",
+)
+# The footer rule drops names that read as ordinary prose; an attribution trailer
+# keeps them because its own prefix already makes the match unambiguous.
+AMBIGUOUS_IN_PROSE = ("cursor",)
+AI_VENDORS = "|".join(AI_VENDOR_NAMES)
+AI_FOOTER_VENDORS = "|".join(
+    name for name in AI_VENDOR_NAMES if name not in AMBIGUOUS_IN_PROSE
+)
 AI_TRACES = (
     (
         re.compile(rf"(?mi)^[ \t]*(?:Co-Authored-By|Signed-off-by):.*(?:{AI_VENDORS})"),
         "AI attribution trailer",
     ),
     (
-        re.compile(rf"(?i)generated (?:with|by) \[?(?:{AI_VENDORS})"),
+        re.compile(rf"(?i)generated (?:with|by) \[?(?:{AI_FOOTER_VENDORS})"),
         "generated-with footer",
     ),
     (re.compile(r"\N{ROBOT FACE}"), "robot signature"),
 )
 
+# Rules match within one shell segment; a separator ends the command that a flag
+# could otherwise be borrowed from.
+SEGMENT = r"[^|;&\n]*"
+# The pipe rule keeps "&" because query strings use it, and a fetch joined by "&&"
+# to an interpreter is still fetch-then-execute.
+PIPED_SEGMENT = r"[^|;\n]*"
+
 REMOTE_EXEC = re.compile(
-    r"\b(?:curl|wget)\b[^|;]*\|\s*(?:sudo\s+)?(?:[a-z]*sh|python[0-9.]*|perl|ruby|node)\b"
+    rf"\b(?:curl|wget)\b{PIPED_SEGMENT}\|\s*(?:sudo\s+)?(?:[a-z]*sh|python[0-9.]*|perl|ruby|node)\b"
 )
 
-FORCE_FLAG = re.compile(r"(?<![\w-])(?:-f|--force)(?![\w-])")
-GIT_PUSH = re.compile(r"\bgit\b[^|;&]*\bpush\b")
-RM_TARGET = re.compile(r"\brm\b(?:\s+-[A-Za-z]+)*\s+(?:-[A-Za-z]+\s+)*(/|/\*|~|~/\*|\$HOME)(?:\s|$)")
-RM_RECURSIVE_FORCE = re.compile(r"\brm\b(?:\s+-[A-Za-z]*[rR][A-Za-z]*f[A-Za-z]*|\s+-[A-Za-z]*f[A-Za-z]*[rR][A-Za-z]*|\s+-[rR]\b.*\s-f\b|\s+-f\b.*\s-[rR]\b)")
+GIT_PUSH_FORCE = re.compile(
+    rf"\bgit\b{SEGMENT}\bpush\b{SEGMENT}(?<![\w-])(?:-f|--force)(?![\w-])"
+)
+RM_TARGET = re.compile(
+    r"\brm\b(?:\s+-[A-Za-z]+)*\s+(?:-[A-Za-z]+\s+)*(/|/\*|~|~/\*|\$HOME)(?:\s|$)"
+)
+RM_RECURSIVE_FORCE = re.compile(
+    r"\brm\b(?:\s+-[A-Za-z]*[rR][A-Za-z]*f[A-Za-z]*|\s+-[A-Za-z]*f[A-Za-z]*[rR][A-Za-z]*|\s+-[rR]\b.*\s-f\b|\s+-f\b.*\s-[rR]\b)"
+)
 
 DESTRUCTIVE = (
-    (lambda c: bool(GIT_PUSH.search(c) and FORCE_FLAG.search(c)), "force-push (use --force-with-lease)"),
-    (lambda c: bool(re.search(r"\bgit\b[^|;&]*\breset\b[^|;&]*--hard", c)), "git reset --hard"),
-    (lambda c: bool(re.search(r"\bgit\s+filter-(?:branch|repo)\b", c)), "history rewrite"),
-    (lambda c: bool(re.search(r"\bgit\b[^|;&]*\bpush\b[^|;&]*--delete\b", c)), "remote branch or tag deletion"),
-    (lambda c: bool(RM_RECURSIVE_FORCE.search(c) and RM_TARGET.search(c)), "recursive delete of a root or home path"),
-    (lambda c: bool(re.search(r"(?i)\b(?:drop\s+(?:table|database|schema)|truncate\s+table)\b", c)), "destructive SQL"),
+    (
+        lambda c: bool(GIT_PUSH_FORCE.search(c)),
+        "force-push (use --force-with-lease)",
+    ),
+    (
+        lambda c: bool(re.search(rf"\bgit\b{SEGMENT}\breset\b{SEGMENT}--hard", c)),
+        "git reset --hard",
+    ),
+    (
+        lambda c: bool(re.search(r"\bgit\s+filter-(?:branch|repo)\b", c)),
+        "history rewrite",
+    ),
+    (
+        lambda c: bool(re.search(rf"\bgit\b{SEGMENT}\bpush\b{SEGMENT}--delete\b", c)),
+        "remote branch or tag deletion",
+    ),
+    (
+        lambda c: bool(RM_RECURSIVE_FORCE.search(c) and RM_TARGET.search(c)),
+        "recursive delete of a root or home path",
+    ),
+    (
+        lambda c: bool(
+            re.search(
+                r"(?i)\b(?:drop\s+(?:table|database|schema)|truncate\s+table)\b", c
+            )
+        ),
+        "destructive SQL",
+    ),
 )
+
+
+def allows_inline(text: str, index: int) -> bool:
+    # The preceding line counts because code formatters relocate a trailing comment
+    # when they reflow arguments, which would silently void a same-line marker.
+    end = text.find("\n", index)
+    head = text if end < 0 else text[:end]
+    return any(ALLOW_INLINE in line.lower() for line in head.rsplit("\n", 2)[-2:])
 
 
 def scan_text(text: str, rules: tuple) -> list[str]:
     findings = []
     for pattern, label in rules:
-        match = pattern.search(text)
-        if match and not PLACEHOLDER.search(match.group(0)):
+        for match in pattern.finditer(text):
+            if PLACEHOLDER.search(match.group(0)):
+                continue
+            if allows_inline(text, match.start()):
+                continue
             findings.append(label)
+            break
     return findings
 
 
@@ -83,7 +151,9 @@ def edited_text(tool_input: dict) -> str:
     parts = [str(tool_input.get(key, "")) for key in keys]
     edits = tool_input.get("edits")
     if isinstance(edits, list):
-        parts += [str(edit.get("new_string", "")) for edit in edits if isinstance(edit, dict)]
+        parts += [
+            str(edit.get("new_string", "")) for edit in edits if isinstance(edit, dict)
+        ]
     return "\n".join(part for part in parts if part)
 
 
@@ -123,8 +193,9 @@ def main() -> int:
     print(
         "universal-agent-skills guard blocked this call: "
         + "; ".join(dict.fromkeys(findings))
-        + ".\nRemove the violation, or for an approved destructive command ask the "
-        "user first and re-run it prefixed with UAS_ALLOW=1.",
+        + ".\nRemove the violation. To keep it on purpose, add uas-allow on the same "
+        "line; for an approved destructive command ask the user first and re-run it "
+        "prefixed with UAS_ALLOW=1.",
         file=sys.stderr,
     )
     return BLOCK

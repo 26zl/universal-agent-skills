@@ -42,7 +42,9 @@ class InstructionSyncTests(unittest.TestCase):
             )
             self.assertEqual(apply.returncode, 0, apply.stderr)
             for target in instructions.targets(home).values():
-                self.assertIn(instructions.START, target.path.read_text(encoding="utf-8"))
+                self.assertIn(
+                    instructions.START, target.path.read_text(encoding="utf-8")
+                )
             check = subprocess.run(
                 [str(SCRIPT), "--check"], env=env, capture_output=True, text=True
             )
@@ -54,7 +56,12 @@ class InstructionSyncTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
-            self.assertTrue(all(not target.path.exists() for target in instructions.targets(home).values()))
+            self.assertTrue(
+                all(
+                    not target.path.exists()
+                    for target in instructions.targets(home).values()
+                )
+            )
 
 
 if __name__ == "__main__":

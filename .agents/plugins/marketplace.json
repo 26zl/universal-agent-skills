@@ -7,8 +7,9 @@
     {
       "name": "universal-agent-skills",
       "source": {
-        "source": "local",
-        "path": "./"
+        "source": "url",
+        "url": "https://github.com/26zl/universal-agent-skills.git",
+        "ref": "v0.3.5"
       },
       "policy": {
         "installation": "AVAILABLE",

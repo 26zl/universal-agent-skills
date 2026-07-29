@@ -79,7 +79,9 @@ def atomic_write(path: Path, text: str) -> None:
         path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     existing_mode = path.stat().st_mode if path.exists() else None
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
@@ -99,8 +101,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         description="Audit, install, or remove managed global agent instructions."
     )
     parser.add_argument("--apply", action="store_true", help="Write planned changes")
-    parser.add_argument("--uninstall", action="store_true", help="Remove only the managed block")
-    parser.add_argument("--check", action="store_true", help="Exit non-zero when state differs")
+    parser.add_argument(
+        "--uninstall", action="store_true", help="Remove only the managed block"
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="Exit non-zero when state differs"
+    )
     parser.add_argument(
         "--agent",
         action="append",
@@ -123,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     for agent in selected:
         target = target_map[agent]
         try:
-            current = target.path.read_text(encoding="utf-8") if target.path.exists() else ""
+            current = (
+                target.path.read_text(encoding="utf-8") if target.path.exists() else ""
+            )
             updated, changed = replace_block(current, uninstall=args.uninstall)
         except (OSError, UnicodeError, ValueError) as exc:
             print(f"error: {agent}: {exc}", file=sys.stderr)
@@ -133,7 +141,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"unchanged [{agent}]: {target.path}")
             continue
         drift = True
-        operation = "remove managed instructions from" if args.uninstall else "install instructions in"
+        operation = (
+            "remove managed instructions from"
+            if args.uninstall
+            else "install instructions in"
+        )
         if not args.apply:
             print(f"would {operation} [{agent}]: {target.path}")
             continue
