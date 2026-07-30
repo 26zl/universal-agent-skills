@@ -31,9 +31,17 @@ def claude_settings(home: Path) -> Path:
     return home / ".claude" / "settings.json"
 
 
+def config_home(home: Path) -> Path:
+    # XDG_CONFIG_HOME describes where the real user's config lives, so it applies
+    # only when this run targets that home; a redirected home must stay contained.
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg and home == Path.home():
+        return Path(xdg)
+    return home / ".config"
+
+
 def opencode_plugin(home: Path) -> Path:
-    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
-    return config_home / "opencode" / "plugins" / "universal-agent-skills.js"
+    return config_home(home) / "opencode" / "plugins" / "universal-agent-skills.js"
 
 
 def shim() -> str:

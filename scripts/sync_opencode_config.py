@@ -16,10 +16,19 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = ROOT / "profiles" / "default.json"
 
 
+def config_home(home: Path) -> Path:
+    # XDG_CONFIG_HOME describes where the real user's config lives, so it applies
+    # only when this run targets that home; a redirected home must stay contained.
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg and home == Path.home():
+        return Path(xdg)
+    return home / ".config"
+
+
 def config_path(home: Path) -> Path:
-    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
-    jsonc = config_home / "opencode" / "opencode.jsonc"
-    plain = config_home / "opencode" / "opencode.json"
+    base = config_home(home) / "opencode"
+    jsonc = base / "opencode.jsonc"
+    plain = base / "opencode.json"
     return jsonc if jsonc.exists() or not plain.exists() else plain
 
 

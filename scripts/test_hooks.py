@@ -338,6 +338,22 @@ class HookRegistration(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_xdg_never_escapes_a_redirected_home(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": "/somewhere/else"}):
+                self.assertEqual(sync_hooks.config_home(home), home / ".config")
+                self.assertTrue(
+                    sync_hooks.opencode_plugin(home).is_relative_to(home),
+                    "a redirected home must contain every path derived from it",
+                )
+
+    def test_xdg_is_honoured_for_the_real_home(self) -> None:
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": "/somewhere/else"}):
+            self.assertEqual(
+                sync_hooks.config_home(Path.home()), Path("/somewhere/else")
+            )
+
     def test_a_foreign_hook_beside_ours_is_preserved(self) -> None:
         foreign = {"type": "command", "command": "/opt/team/audit-log.sh"}
         group = {
@@ -401,7 +417,7 @@ class HookRegistration(unittest.TestCase):
             self.assertTrue(changed)
             self.assertTrue(content.startswith(sync_hooks.SHIM_MARKER))
 
-            path.parent.mkdir(parents=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             self.assertFalse(sync_hooks.plan_opencode(home, uninstall=False)[2])
             self.assertTrue(sync_hooks.plan_opencode(home, uninstall=True)[2])
@@ -416,7 +432,7 @@ class HookRegistration(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             path = sync_hooks.opencode_plugin(home)
-            path.parent.mkdir(parents=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
                 sync_hooks.SHIM_MARKER
                 + '\nexport { UniversalAgentSkillsGuard } from "file:///old/checkout/hooks/opencode-guard.js";\n',
