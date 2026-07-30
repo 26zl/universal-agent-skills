@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -19,6 +20,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import sync_instructions as instruction_sync
+from sync_opencode_config import config_home
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1021,9 +1023,9 @@ def build_copilot_plan(
 
 def opencode_config_path() -> Path:
     home = Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
-    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
-    jsonc = config_home / "opencode" / "opencode.jsonc"
-    plain = config_home / "opencode" / "opencode.json"
+    base = config_home(home) / "opencode"
+    jsonc = base / "opencode.jsonc"
+    plain = base / "opencode.json"
     return jsonc if jsonc.exists() or not plain.exists() else plain
 
 
@@ -1800,6 +1802,9 @@ def run_output(command: list[str]) -> str:
             capture_output=True,
             text=True,
             timeout=600,
+            # A tool that prompts would otherwise block on the caller's terminal
+            # until the timeout; closed input turns that into an immediate error.
+            stdin=subprocess.DEVNULL,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(f"required command not found: {command[0]}") from exc
@@ -1829,9 +1834,17 @@ def run_checked(
     command: list[str], *, environment: dict[str, str] | None = None
 ) -> None:
     try:
-        subprocess.run(command, check=True, env=environment)
+        subprocess.run(
+            command,
+            check=True,
+            env=environment,
+            timeout=600,
+            stdin=subprocess.DEVNULL,
+        )
     except FileNotFoundError as exc:
         raise RuntimeError(f"required command not found: {command[0]}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{shlex.join(command)} timed out") from exc
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
             f"command failed ({exc.returncode}): {shlex.join(command)}"
@@ -2012,6 +2025,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
+@contextlib.contextmanager
+def component_scope(name: str, *, strict: bool, failures: list[str]):
+    """Isolate one component so a broken optional CLI cannot end the whole audit."""
+    try:
+        yield
+    except (RuntimeError, OSError, UnicodeDecodeError) as exc:
+        if strict:
+            raise
+        failures.append(f"{name}: {exc}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
@@ -2042,205 +2066,240 @@ def main(argv: list[str] | None = None) -> int:
             "instructions",
         )
     )
+    failures: list[str] = []
     plans: list[Plan] = []
     try:
         native_actions: list[Action] = []
         if "native" in components:
-            native_plan = build_native_plan(profile, args.npx_command)
-            native_actions = native_plan.actions
-            if args.apply and native_actions and shutil.which(args.npx_command) is None:
-                raise RuntimeError(f"required command not found: {args.npx_command}")
-            plans.append(native_plan)
+            with component_scope("native", strict=args.apply, failures=failures):
+                native_plan = build_native_plan(profile, args.npx_command)
+                native_actions = native_plan.actions
+                if (
+                    args.apply
+                    and native_actions
+                    and shutil.which(args.npx_command) is None
+                ):
+                    raise RuntimeError(
+                        f"required command not found: {args.npx_command}"
+                    )
+                plans.append(native_plan)
         native_resets_codex = any(
             action.label == "ensure native integration ecc-codex"
             for action in native_actions
         )
         if "claude" in components:
-            if shutil.which(args.claude_command) is None:
-                raise RuntimeError(f"required command not found: {args.claude_command}")
-            markets = run_json(
-                [args.claude_command, "plugin", "marketplace", "list", "--json"]
-            )
-            plugins = run_json([args.claude_command, "plugin", "list", "--json"])
-            plans.append(
-                build_claude_plan(
-                    profile,
-                    markets,
-                    plugins,
-                    include_sensitive=args.include_sensitive,
-                    update=args.update,
-                    claude_command=args.claude_command,
+            with component_scope("claude", strict=args.apply, failures=failures):
+                if shutil.which(args.claude_command) is None:
+                    raise RuntimeError(
+                        f"required command not found: {args.claude_command}"
+                    )
+                markets = run_json(
+                    [args.claude_command, "plugin", "marketplace", "list", "--json"]
                 )
-            )
+                plugins = run_json([args.claude_command, "plugin", "list", "--json"])
+                plans.append(
+                    build_claude_plan(
+                        profile,
+                        markets,
+                        plugins,
+                        include_sensitive=args.include_sensitive,
+                        update=args.update,
+                        claude_command=args.claude_command,
+                    )
+                )
         if "codex" in components:
-            if shutil.which(args.codex_command) is None:
-                raise RuntimeError(f"required command not found: {args.codex_command}")
-            marketplace_value = run_json_value(
-                [args.codex_command, "plugin", "marketplace", "list", "--json"]
-            )
-            plugin_value = run_json_value(
-                [args.codex_command, "plugin", "list", "--available", "--json"]
-            )
-            if not isinstance(marketplace_value, dict) or not isinstance(
-                marketplace_value.get("marketplaces"), list
-            ):
-                raise RuntimeError(
-                    "Codex marketplace list returned an unexpected JSON shape"
+            with component_scope("codex", strict=args.apply, failures=failures):
+                if shutil.which(args.codex_command) is None:
+                    raise RuntimeError(
+                        f"required command not found: {args.codex_command}"
+                    )
+                marketplace_value = run_json_value(
+                    [args.codex_command, "plugin", "marketplace", "list", "--json"]
                 )
-            if not isinstance(plugin_value, dict) or not isinstance(
-                plugin_value.get("installed"), list
-            ):
-                raise RuntimeError(
-                    "Codex plugin list returned an unexpected JSON shape"
+                plugin_value = run_json_value(
+                    [args.codex_command, "plugin", "list", "--available", "--json"]
                 )
-            plans.append(
-                build_codex_plan(
-                    profile,
-                    [] if native_resets_codex else marketplace_value["marketplaces"],
-                    [] if native_resets_codex else plugin_value["installed"],
-                    update=args.update,
-                    codex_command=args.codex_command,
+                if not isinstance(marketplace_value, dict) or not isinstance(
+                    marketplace_value.get("marketplaces"), list
+                ):
+                    raise RuntimeError(
+                        "Codex marketplace list returned an unexpected JSON shape"
+                    )
+                if not isinstance(plugin_value, dict) or not isinstance(
+                    plugin_value.get("installed"), list
+                ):
+                    raise RuntimeError(
+                        "Codex plugin list returned an unexpected JSON shape"
+                    )
+                plans.append(
+                    build_codex_plan(
+                        profile,
+                        []
+                        if native_resets_codex
+                        else marketplace_value["marketplaces"],
+                        [] if native_resets_codex else plugin_value["installed"],
+                        update=args.update,
+                        codex_command=args.codex_command,
+                    )
                 )
-            )
         if "copilot" in components:
-            if shutil.which(args.copilot_command) is None:
-                raise RuntimeError(
-                    f"required command not found: {args.copilot_command}"
-                )
-            plans.append(
-                build_copilot_plan(
-                    profile,
-                    run_output([args.copilot_command, "plugin", "marketplace", "list"]),
-                    run_output([args.copilot_command, "plugin", "list"]),
-                    update=args.update,
-                    copilot_command=args.copilot_command,
-                )
-            )
-        if "opencode" in components:
-            if shutil.which(args.opencode_command) is None:
-                raise RuntimeError(
-                    f"required command not found: {args.opencode_command}"
-                )
-            config = opencode_config_path()
-            config_text = config.read_text(encoding="utf-8") if config.exists() else ""
-            plans.append(
-                build_opencode_plan(
-                    profile,
-                    config_text,
-                    update=args.update,
-                    opencode_command=args.opencode_command,
-                )
-            )
-        if "vscode" in components:
-            if shutil.which(args.code_command) is None:
-                raise RuntimeError(f"required command not found: {args.code_command}")
-            plans.append(
-                build_vscode_plan(
-                    profile,
-                    vscode_extension_inventory(
-                        args.code_command,
+            with component_scope("copilot", strict=args.apply, failures=failures):
+                if shutil.which(args.copilot_command) is None:
+                    raise RuntimeError(
+                        f"required command not found: {args.copilot_command}"
+                    )
+                plans.append(
+                    build_copilot_plan(
+                        profile,
                         run_output(
-                            [args.code_command, "--list-extensions", "--show-versions"]
+                            [args.copilot_command, "plugin", "marketplace", "list"]
                         ),
-                    ),
-                    args.code_command,
-                )
-            )
-        if "mcp" in components:
-            required_mcp_agents = {
-                agent
-                for server in profile.get("mcpServers", [])
-                for agent in server["agents"]
-            }
-            mcp_commands = {
-                "codex": args.codex_command,
-                "opencode": args.opencode_command,
-                "copilot": args.copilot_command,
-            }
-            for agent in required_mcp_agents:
-                if shutil.which(mcp_commands[agent]) is None:
-                    raise RuntimeError(
-                        f"required command not found: {mcp_commands[agent]}"
+                        run_output([args.copilot_command, "plugin", "list"]),
+                        update=args.update,
+                        copilot_command=args.copilot_command,
                     )
-            current_names: dict[str, set[str]] = {}
-            conflicting_names: dict[str, set[str]] = {}
-            if "codex" in required_mcp_agents:
-                codex_mcp = run_json_value(
-                    [args.codex_command, "mcp", "list", "--json"]
                 )
-                if not isinstance(codex_mcp, list):
+        if "opencode" in components:
+            with component_scope("opencode", strict=args.apply, failures=failures):
+                if shutil.which(args.opencode_command) is None:
                     raise RuntimeError(
-                        "Codex MCP list returned an unexpected JSON shape"
+                        f"required command not found: {args.opencode_command}"
                     )
-                if native_resets_codex:
-                    current_names["codex"] = set()
-                else:
-                    desired_codex = {
-                        server["name"]: server
-                        for server in profile.get("mcpServers", [])
-                        if "codex" in server["agents"]
-                    }
-                    current_names["codex"] = set()
-                    conflicting_names["codex"] = set()
-                    for item in codex_mcp:
-                        if not isinstance(item, dict):
-                            continue
-                        name = str(item.get("name", "")).lower()
-                        desired_server = desired_codex.get(name)
-                        if desired_server is None:
-                            continue
-                        if codex_mcp_matches(desired_server, item):
-                            current_names["codex"].add(name)
-                        else:
-                            conflicting_names["codex"].add(name)
-            if "opencode" in required_mcp_agents:
                 config = opencode_config_path()
                 config_text = (
                     config.read_text(encoding="utf-8") if config.exists() else ""
                 )
-                (
-                    current_names["opencode"],
-                    conflicting_names["opencode"],
-                ) = opencode_mcp_inventory(profile, config_text)
-            if "copilot" in required_mcp_agents:
-                (
-                    current_names["copilot"],
-                    conflicting_names["copilot"],
-                ) = copilot_mcp_inventory(
-                    profile,
-                    run_json_value([args.copilot_command, "mcp", "list", "--json"]),
+                plans.append(
+                    build_opencode_plan(
+                        profile,
+                        config_text,
+                        update=args.update,
+                        opencode_command=args.opencode_command,
+                    )
                 )
-            mcp_plan = build_mcp_plan(
-                profile,
-                current_names,
-                profile_path=args.profile,
-                update=args.update,
-                conflicting_names=conflicting_names,
-                codex_command=args.codex_command,
-                opencode_command=args.opencode_command,
-                copilot_command=args.copilot_command,
-            )
-            if "opencode" in required_mcp_agents:
-                mcp_plan = guard_jsonc_opencode_plan(
-                    mcp_plan,
-                    profile,
-                    current_names.get("opencode", set()),
-                    conflicting_names.get("opencode", set()),
-                    config_text,
+        if "vscode" in components:
+            with component_scope("vscode", strict=args.apply, failures=failures):
+                if shutil.which(args.code_command) is None:
+                    raise RuntimeError(
+                        f"required command not found: {args.code_command}"
+                    )
+                plans.append(
+                    build_vscode_plan(
+                        profile,
+                        vscode_extension_inventory(
+                            args.code_command,
+                            run_output(
+                                [
+                                    args.code_command,
+                                    "--list-extensions",
+                                    "--show-versions",
+                                ]
+                            ),
+                        ),
+                        args.code_command,
+                    )
                 )
-            plans.append(mcp_plan)
+        if "mcp" in components:
+            with component_scope("mcp", strict=args.apply, failures=failures):
+                required_mcp_agents = {
+                    agent
+                    for server in profile.get("mcpServers", [])
+                    for agent in server["agents"]
+                }
+                mcp_commands = {
+                    "codex": args.codex_command,
+                    "opencode": args.opencode_command,
+                    "copilot": args.copilot_command,
+                }
+                for agent in required_mcp_agents:
+                    if shutil.which(mcp_commands[agent]) is None:
+                        raise RuntimeError(
+                            f"required command not found: {mcp_commands[agent]}"
+                        )
+                current_names: dict[str, set[str]] = {}
+                conflicting_names: dict[str, set[str]] = {}
+                if "codex" in required_mcp_agents:
+                    codex_mcp = run_json_value(
+                        [args.codex_command, "mcp", "list", "--json"]
+                    )
+                    if not isinstance(codex_mcp, list):
+                        raise RuntimeError(
+                            "Codex MCP list returned an unexpected JSON shape"
+                        )
+                    if native_resets_codex:
+                        current_names["codex"] = set()
+                    else:
+                        desired_codex = {
+                            server["name"]: server
+                            for server in profile.get("mcpServers", [])
+                            if "codex" in server["agents"]
+                        }
+                        current_names["codex"] = set()
+                        conflicting_names["codex"] = set()
+                        for item in codex_mcp:
+                            if not isinstance(item, dict):
+                                continue
+                            name = str(item.get("name", "")).lower()
+                            desired_server = desired_codex.get(name)
+                            if desired_server is None:
+                                continue
+                            if codex_mcp_matches(desired_server, item):
+                                current_names["codex"].add(name)
+                            else:
+                                conflicting_names["codex"].add(name)
+                if "opencode" in required_mcp_agents:
+                    config = opencode_config_path()
+                    config_text = (
+                        config.read_text(encoding="utf-8") if config.exists() else ""
+                    )
+                    (
+                        current_names["opencode"],
+                        conflicting_names["opencode"],
+                    ) = opencode_mcp_inventory(profile, config_text)
+                if "copilot" in required_mcp_agents:
+                    (
+                        current_names["copilot"],
+                        conflicting_names["copilot"],
+                    ) = copilot_mcp_inventory(
+                        profile,
+                        run_json_value([args.copilot_command, "mcp", "list", "--json"]),
+                    )
+                mcp_plan = build_mcp_plan(
+                    profile,
+                    current_names,
+                    profile_path=args.profile,
+                    update=args.update,
+                    conflicting_names=conflicting_names,
+                    codex_command=args.codex_command,
+                    opencode_command=args.opencode_command,
+                    copilot_command=args.copilot_command,
+                )
+                if "opencode" in required_mcp_agents:
+                    mcp_plan = guard_jsonc_opencode_plan(
+                        mcp_plan,
+                        profile,
+                        current_names.get("opencode", set()),
+                        conflicting_names.get("opencode", set()),
+                        config_text,
+                    )
+                plans.append(mcp_plan)
         if "skills" in components:
-            skill_plan = build_portable_skill_plan(profile, args.npx_command)
-            if args.apply and skill_plan.actions:
-                for command in ("git", args.npx_command):
-                    if shutil.which(command) is None:
-                        raise RuntimeError(f"required command not found: {command}")
-            plans.append(skill_plan)
+            with component_scope("skills", strict=args.apply, failures=failures):
+                skill_plan = build_portable_skill_plan(profile, args.npx_command)
+                if args.apply and skill_plan.actions:
+                    for command in ("git", args.npx_command):
+                        if shutil.which(command) is None:
+                            raise RuntimeError(f"required command not found: {command}")
+                plans.append(skill_plan)
         if "instructions" in components:
-            plans.append(build_instruction_plan())
+            with component_scope("instructions", strict=args.apply, failures=failures):
+                plans.append(build_instruction_plan())
     except (RuntimeError, OSError, UnicodeDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    for failure in failures:
+        print(f"warning: skipped {failure}", file=sys.stderr)
 
     for plan in plans:
         print_plan(plan, args.apply)
@@ -2253,7 +2312,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     if args.check:
-        return 1 if drift else 0
+        # An unevaluated component means the state cannot be confirmed as correct.
+        return 1 if drift or failures else 0
     if not args.apply:
         print("audit complete; no changes were made")
         return 0

@@ -168,6 +168,8 @@ Audit without changing the machine:
 python3 scripts/sync_agent_stack.py
 ```
 
+A component whose CLI is missing or does not answer is reported as `warning: skipped …` and the remaining components are still audited; `--apply` keeps aborting on the same failure rather than reconciling a partial stack, and `--check` treats an unevaluated component as not confirmed. The audit itself writes nothing, though querying an editor for its inventory can make that editor create its own configuration directory.
+
 Install missing standard plugins, integrations, instructions, and portable skills:
 
 ```bash

@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from sync_instructions import atomic_write
+from sync_opencode_config import config_home
 
 ROOT = Path(__file__).resolve().parent.parent
 GUARD = ROOT / "hooks" / "guard.py"
@@ -29,15 +30,6 @@ SUPPORTED_AGENTS = ("claude", "opencode")
 
 def claude_settings(home: Path) -> Path:
     return home / ".claude" / "settings.json"
-
-
-def config_home(home: Path) -> Path:
-    # XDG_CONFIG_HOME describes where the real user's config lives, so it applies
-    # only when this run targets that home; a redirected home must stay contained.
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    if xdg and home == Path.home():
-        return Path(xdg)
-    return home / ".config"
 
 
 def opencode_plugin(home: Path) -> Path:

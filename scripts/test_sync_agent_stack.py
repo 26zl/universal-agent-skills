@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
+import io
 import json
 import os
 import shutil
@@ -893,6 +895,38 @@ class AgentStackTests(unittest.TestCase):
             (checkout.path / "SKILL.md").write_text("changed\n", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "local changes"):
                 stack.ensure_pinned_checkout(checkout)
+
+
+class ComponentIsolation(unittest.TestCase):
+    def run_main(self, *arguments: str) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory() as directory:
+            stderr = io.StringIO()
+            with (
+                mock.patch.dict(os.environ, {"UAS_HOME": directory}),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(stderr),
+            ):
+                return stack.main(list(arguments)), stderr.getvalue()
+
+    def test_dry_run_skips_a_component_whose_command_is_missing(self) -> None:
+        code, stderr = self.run_main(
+            "--component", "claude", "--claude-command", "/nonexistent-cli"
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("warning: skipped claude", stderr)
+
+    def test_apply_still_aborts_on_the_same_failure(self) -> None:
+        code, stderr = self.run_main(
+            "--apply", "--component", "claude", "--claude-command", "/nonexistent-cli"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("required command not found", stderr)
+
+    def test_check_reports_an_unevaluated_component(self) -> None:
+        code, _ = self.run_main(
+            "--check", "--component", "claude", "--claude-command", "/nonexistent-cli"
+        )
+        self.assertEqual(code, 1, "an unevaluated component cannot count as in sync")
 
 
 if __name__ == "__main__":
