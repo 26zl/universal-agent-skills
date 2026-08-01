@@ -30,6 +30,7 @@
       "Use $surgical-implementation to keep the change minimal and goal-driven.",
       "Use $verify-changes before reporting completion.",
       "Use $no-ai-traces for commit messages, pull requests, and delivered docs.",
+      "Use $docs-consolidation when writing or reorganizing project documentation.",
       "Use $secret-hygiene whenever work could touch credentials.",
       "Use $data-minimization when handling test data, logs, or personal records.",
       "Use $supply-chain-pinning when adding or updating dependencies.",

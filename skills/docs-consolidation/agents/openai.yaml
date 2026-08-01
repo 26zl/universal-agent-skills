@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs Consolidation"
+  short_description: "Consolidate docs instead of adding files"
+  default_prompt: "Use $docs-consolidation when writing or reorganizing project documentation."

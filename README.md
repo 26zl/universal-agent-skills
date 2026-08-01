@@ -32,6 +32,7 @@ The installers are idempotent, support symbolic links or copies, track what they
 │   ├── coding-style/
 │   ├── data-minimization/
 │   ├── destructive-ops-approval/
+│   ├── docs-consolidation/
 │   ├── license-compliance/
 │   ├── no-ai-traces/
 │   ├── secret-hygiene/
@@ -55,6 +56,8 @@ The installers are idempotent, support symbolic links or copies, track what they
 `coding-style` tells agents to prefer self-explanatory code and use short, neutral comments only when intent or constraints are not obvious. It explicitly avoids conversational, first-person, AI-like narration, and keeps identifiers, comments, and commit messages in English even when the conversation is in another language.
 
 `simplify-code` provides the portable equivalent of a focused code-simplifier workflow while preserving behavior. `surgical-implementation` keeps changes small, makes material assumptions visible, prevents drive-by refactoring, and requires a defect found along the way to be fixed as its own change instead of silently skipped. `verify-changes` requires focused validation evidence before an agent reports completion.
+
+`docs-consolidation` keeps project documentation in a small set of canonical files: agents extend an existing document instead of scattering new Markdown files, merge overlapping documents, and never leave behind unrequested summary, notes, or plan files.
 
 `no-ai-traces` keeps delivered work — commits, pull requests, release notes, comments, and documentation — free of assistant self-reference such as Co-Authored-By trailers, generated-with footers, or session narration. Explicit organizational disclosure requirements always take precedence over the skill.
 
@@ -214,6 +217,7 @@ A skill is model-invoked: only its name and description reach the system prompt,
 | `simplify-code` | — | — |
 | `surgical-implementation` | — | — |
 | `verify-changes` | — | — |
+| `docs-consolidation` | — | — |
 
 The empty cells are deliberate. Whether a comment earns its place, whether a record is real or synthetic, whether a license is compatible, and whether a change is minimal are judgments no pattern decides; a regex that guessed at them would block correct work and be switched off within a day. Those skills stay advisory.
 
