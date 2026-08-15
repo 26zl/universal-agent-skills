@@ -431,6 +431,12 @@ This repository adopts several useful patterns from the referenced projects:
 
 The canonical source remains standard `SKILL.md` folders. Agent-specific behavior is kept in adapters and plugin manifests rather than duplicated copies of each skill. See [Design notes](docs/design-notes.md) for the tradeoffs.
 
+## Related skills
+
+Skills that fit the same multi-agent ecosystem but are maintained upstream — install them from their own source, not this repository:
+
+- [`remove-ai-marks`](https://github.com/guillaumemeyer/watermarks-remover) — strips multi-vendor AI provenance marks (invisible Unicode, statistical text watermarks, C2PA/EXIF/XMP metadata) from content you own.
+
 ## License
 
 MIT. Security scanners and other referenced projects retain their own licenses.
