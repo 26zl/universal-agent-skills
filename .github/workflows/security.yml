@@ -49,6 +49,7 @@ jobs:
           cache-dependency-path: requirements-cisco.txt
 
       - name: Install pinned Skill Scanner
+        id: install
         run: python -m pip install --disable-pip-version-check -r requirements-cisco.txt
 
       - name: Run strict behavioral scan
@@ -61,7 +62,10 @@ jobs:
           --format sarif
           --output cisco-skill-scanner.sarif
 
+      # Findings in the local skills must not hide the external-skill scan and its SARIF.
       - name: Materialize commit-pinned portable skills
+        id: materialize
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           HOME="$RUNNER_TEMP/uas-home"
           UAS_HOME="$RUNNER_TEMP/uas-home"
@@ -69,6 +73,7 @@ jobs:
           python scripts/sync_agent_stack.py --component skills --apply
 
       - name: Scan commit-pinned portable skills
+        if: ${{ !cancelled() && steps.materialize.outcome == 'success' }}
         run: >-
           skill-scanner scan-all "$RUNNER_TEMP/uas-home/.agents/skills"
           --recursive
@@ -81,6 +86,7 @@ jobs:
       - name: Upload SARIF
         if: >-
           always() &&
+          hashFiles('cisco-skill-scanner.sarif') != '' &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v3
@@ -91,6 +97,7 @@ jobs:
       - name: Upload external-skill SARIF
         if: >-
           always() &&
+          hashFiles('cisco-external-skills.sarif') != '' &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v3
