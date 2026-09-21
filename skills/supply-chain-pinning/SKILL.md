@@ -12,7 +12,7 @@ Every dependency is code you now ship; adopt it deliberately or not at all.
 
 - Before adding a dependency, state what it is needed for and why the standard library or an existing dependency does not cover it.
 - Pin what you adopt: exact versions in manifests where the ecosystem supports it, full commit hashes for Git sources and GitHub Actions, digests for container images.
-- Never pipe remote scripts into a shell and never fetch install code from a mutable reference; when a script install is unavoidable, download, review, and execute it from disk.
+- Never pipe remote scripts into a shell and never fetch install code from a mutable reference. When a script install is unavoidable, download it from an immutable URL and check it against a pinned checksum or signature; review the verified local copy before you run it.
 - Respect lockfiles: change them through the ecosystem's own tool, never by hand, and never delete one to make an install pass.
 - Read what changed before adopting an update; a major version bump or a maintainer change is a review event, not a routine edit.
 - Prefer maintained dependencies with compatible licenses over unmaintained or trivially replaceable packages.
