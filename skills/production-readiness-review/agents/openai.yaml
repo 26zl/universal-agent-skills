@@ -1,0 +1,4 @@
+interface:
+  display_name: "Production Readiness Review"
+  short_description: "Decide whether a project is ready for production"
+  default_prompt: "Use $production-readiness-review to decide whether a project is ready for production."

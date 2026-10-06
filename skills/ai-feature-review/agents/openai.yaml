@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Feature Review"
+  short_description: "Reliability, evaluation, safety, privacy and cost of AI features"
+  default_prompt: "Use $ai-feature-review to reliability, evaluation, safety, privacy and cost of AI features."

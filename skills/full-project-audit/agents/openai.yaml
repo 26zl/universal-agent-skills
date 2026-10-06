@@ -1,0 +1,4 @@
+interface:
+  display_name: "Full Project Audit"
+  short_description: "Score every area of a project and plan the remaining checks"
+  default_prompt: "Use $full-project-audit to score every area of a project and plan the remaining checks."

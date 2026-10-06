@@ -1,0 +1,4 @@
+interface:
+  display_name: "Operations and Reliability Audit"
+  short_description: "Observability, deployments, backups, recovery and resilience"
+  default_prompt: "Use $operations-audit to observability, deployments, backups, recovery and resilience."

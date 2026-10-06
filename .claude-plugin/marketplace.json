@@ -8,12 +8,14 @@
     {
       "name": "universal-agent-skills",
       "source": "./",
-      "description": "Concise coding conventions and evidence-based verification workflows.",
+      "description": "Concise coding conventions, evidence-based verification workflows, and audits for security, readiness, accessibility, operations, data, APIs and repositories.",
       "category": "development",
       "keywords": [
         "agent-skills",
         "coding-style",
-        "verification"
+        "verification",
+        "security-audit",
+        "code-review"
       ]
     }
   ]

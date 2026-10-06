@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Audit"
+  short_description: "Find exploitable vulnerabilities with a 76-item checklist"
+  default_prompt: "Use $security-audit to find exploitable vulnerabilities with a 76-item checklist."

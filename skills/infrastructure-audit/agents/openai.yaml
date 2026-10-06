@@ -1,0 +1,4 @@
+interface:
+  display_name: "Infrastructure and Configuration Audit"
+  short_description: "Review IaC, containers, Kubernetes, Nix and CI without applying"
+  default_prompt: "Use $infrastructure-audit to review IaC, containers, Kubernetes, Nix and CI without applying."

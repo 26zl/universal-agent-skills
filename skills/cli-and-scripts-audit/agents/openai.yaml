@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLI and Scripts Audit"
+  short_description: "Make CLIs, shell and PowerShell scripts safe and portable"
+  default_prompt: "Use $cli-and-scripts-audit to make CLIs, shell and PowerShell scripts safe and portable."

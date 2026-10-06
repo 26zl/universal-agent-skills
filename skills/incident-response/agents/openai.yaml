@@ -1,0 +1,4 @@
+interface:
+  display_name: "Incident Response and Postmortem"
+  short_description: "Stabilize, diagnose, then write a blameless postmortem"
+  default_prompt: "Use $incident-response to stabilize, diagnose, then write a blameless postmortem."

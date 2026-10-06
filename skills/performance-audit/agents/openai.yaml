@@ -1,0 +1,4 @@
+interface:
+  display_name: "Performance Audit"
+  short_description: "Find and fix the bottlenecks that matter, with measurements"
+  default_prompt: "Use $performance-audit to find and fix the bottlenecks that matter, with measurements."

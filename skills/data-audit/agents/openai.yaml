@@ -1,0 +1,4 @@
+interface:
+  display_name: "Data and Database Audit"
+  short_description: "Schemas, migrations, queries, integrity, backups and pipelines"
+  default_prompt: "Use $data-audit to schemas, migrations, queries, integrity, backups and pipelines."

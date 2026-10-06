@@ -1,7 +1,7 @@
 {
   "name": "universal-agent-skills",
-  "version": "0.3.5",
-  "description": "Portable coding-agent skills for consistent implementation and verification workflows.",
+  "version": "0.4.0",
+  "description": "Portable coding-agent skills for consistent implementation and verification workflows, plus audits for security, readiness, accessibility, operations and more.",
   "author": {
     "name": "Repository maintainers"
   },
@@ -9,7 +9,9 @@
   "keywords": [
     "agent-skills",
     "coding-style",
-    "claude-code"
+    "claude-code",
+    "security-audit",
+    "code-review"
   ],
   "skills": "./skills/"
 }

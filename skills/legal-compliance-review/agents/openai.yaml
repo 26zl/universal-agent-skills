@@ -1,0 +1,4 @@
+interface:
+  display_name: "Legal and Compliance Review"
+  short_description: "Privacy, consumer-protection, marketing and licensing risks"
+  default_prompt: "Use $legal-compliance-review to privacy, consumer-protection, marketing and licensing risks."

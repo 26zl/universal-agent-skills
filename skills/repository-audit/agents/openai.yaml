@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repository Audit"
+  short_description: "Docs, licensing, metadata, history, automation and releases"
+  default_prompt: "Use $repository-audit to docs, licensing, metadata, history, automation and releases."

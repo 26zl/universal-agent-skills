@@ -1,0 +1,4 @@
+interface:
+  display_name: "Describe Changes"
+  short_description: "Commit messages and pull request descriptions"
+  default_prompt: "Use $describe-changes to commit messages and pull request descriptions."

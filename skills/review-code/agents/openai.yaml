@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Code"
+  short_description: "Review a diff, branch or pull request"
+  default_prompt: "Use $review-code to review a diff, branch or pull request."

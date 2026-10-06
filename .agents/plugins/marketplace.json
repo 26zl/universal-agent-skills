@@ -9,7 +9,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/26zl/universal-agent-skills.git",
-        "ref": "v0.3.5"
+        "ref": "v0.4.0"
       },
       "policy": {
         "installation": "AVAILABLE",

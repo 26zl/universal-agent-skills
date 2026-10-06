@@ -1,0 +1,4 @@
+interface:
+  display_name: "Improve a Prompt"
+  short_description: "Turn any prompt into a clear, model-agnostic one"
+  default_prompt: "Use $improve-prompt to turn any prompt into a clear, model-agnostic one."

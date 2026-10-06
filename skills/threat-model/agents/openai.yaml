@@ -1,0 +1,4 @@
+interface:
+  display_name: "Threat Model"
+  short_description: "Design-level threats, controls and mitigations"
+  default_prompt: "Use $threat-model to design-level threats, controls and mitigations."

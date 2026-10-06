@@ -1,0 +1,4 @@
+interface:
+  display_name: "Upgrade Dependencies"
+  short_description: "Upgrade packages and runtimes safely, security fixes first"
+  default_prompt: "Use $upgrade-dependencies to upgrade packages and runtimes safely, security fixes first."

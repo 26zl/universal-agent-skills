@@ -115,7 +115,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [coding-style, data-minimization, destructive-ops-approval, docs-consolidation, license-compliance, no-ai-traces, secret-hygiene, simplify-code, supply-chain-pinning, surgical-implementation, verify-changes]
+        skill: [accessibility-audit, ai-feature-review, api-design-review, architecture-review, cli-and-scripts-audit, coding-style, data-audit, data-minimization, debug, describe-changes, destructive-ops-approval, docs-consolidation, explain-codebase, full-project-audit, implement-feature, improve-prompt, incident-response, infrastructure-audit, legal-compliance-review, license-compliance, no-ai-traces, operations-audit, performance-audit, prepare-release, production-readiness-review, refactor, repository-audit, review-code, secret-hygiene, security-audit, simplify-code, start-project, supply-chain-pinning, surgical-implementation, threat-model, upgrade-dependencies, ux-review, verify-changes, write-agent-instructions, write-docs, write-tests]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

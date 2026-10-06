@@ -1,0 +1,4 @@
+interface:
+  display_name: "Start a New Project"
+  short_description: "Scaffold a project with its whole baseline in place"
+  default_prompt: "Use $start-project to scaffold a project with its whole baseline in place."

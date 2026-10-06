@@ -29,17 +29,47 @@ The installers are idempotent, support symbolic links or copies, track what they
 ```text
 .
 ├── skills/                         # Canonical Agent Skills
+│   ├── accessibility-audit/
+│   ├── ai-feature-review/
+│   ├── api-design-review/
+│   ├── architecture-review/
+│   ├── cli-and-scripts-audit/
 │   ├── coding-style/
+│   ├── data-audit/
 │   ├── data-minimization/
+│   ├── debug/
+│   ├── describe-changes/
 │   ├── destructive-ops-approval/
 │   ├── docs-consolidation/
+│   ├── explain-codebase/
+│   ├── full-project-audit/
+│   ├── implement-feature/
+│   ├── improve-prompt/
+│   ├── incident-response/
+│   ├── infrastructure-audit/
+│   ├── legal-compliance-review/
 │   ├── license-compliance/
 │   ├── no-ai-traces/
+│   ├── operations-audit/
+│   ├── performance-audit/
+│   ├── prepare-release/
+│   ├── production-readiness-review/
+│   ├── refactor/
+│   ├── repository-audit/
+│   ├── review-code/
 │   ├── secret-hygiene/
+│   ├── security-audit/
 │   ├── simplify-code/
+│   ├── start-project/
 │   ├── supply-chain-pinning/
 │   ├── surgical-implementation/
-│   └── verify-changes/
+│   ├── threat-model/
+│   ├── upgrade-dependencies/
+│   ├── ux-review/
+│   ├── verify-changes/
+│   ├── write-agent-instructions/
+│   ├── write-docs/
+│   └── write-tests/
 ├── profiles/default.json           # Desired external plugin/skill stack
 ├── adapters/agents.tsv             # Agent discovery paths
 ├── .claude-plugin/                 # Claude plugin + marketplace metadata
@@ -62,6 +92,8 @@ The installers are idempotent, support symbolic links or copies, track what they
 `no-ai-traces` keeps delivered work — commits, pull requests, release notes, comments, and documentation — free of assistant self-reference such as Co-Authored-By trailers, generated-with footers, or session narration. Explicit organizational disclosure requirements always take precedence over the skill.
 
 `secret-hygiene`, `data-minimization`, `supply-chain-pinning`, `destructive-ops-approval`, and `license-compliance` form a workplace governance set: secret values never enter code or output, real personal data stays out of tests and logs, dependencies are justified and pinned, irreversible operations wait for explicit approval, and third-party code enters only with a compatible license and preserved attribution.
+
+The remaining 30 skills are task-shaped reviews and workflows generated from the [AI_prompts](https://github.com/26zl/AI_prompts) collection, which stays their source of truth. `full-project-audit`, `production-readiness-review`, `security-audit`, `threat-model`, `legal-compliance-review`, `accessibility-audit`, `ux-review`, `performance-audit`, `operations-audit`, `infrastructure-audit`, `data-audit`, `api-design-review`, `architecture-review`, `ai-feature-review`, `cli-and-scripts-audit` and `repository-audit` review a project; `start-project`, `implement-feature`, `debug`, `write-tests`, `refactor`, `review-code`, `explain-codebase`, `write-docs`, `upgrade-dependencies`, `describe-changes`, `prepare-release` and `incident-response` do the work; `improve-prompt` and `write-agent-instructions` help with prompts and agent setup. Each starts with a Settings block, for example `Mode: report`; text given with the invocation overrides it, and reviews default to read-only or to contained fixes that are never committed. Edit these skills in AI_prompts and regenerate them with its `scripts/export-skills.py`; the copies here are not edited directly.
 
 ## Supported targets
 
@@ -116,18 +148,18 @@ Pin a full commit for immutable installs, or use a protected release tag for rel
 
 ```bash
 bootstrap=$(mktemp)
-curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.3.5/bootstrap.sh -o "$bootstrap"
+curl -fsSL https://raw.githubusercontent.com/26zl/universal-agent-skills/v0.4.0/bootstrap.sh -o "$bootstrap"
 less "$bootstrap"
-sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.5
+sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.4.0
 rm -f "$bootstrap"
 ```
 
-For a rolling installation that follows `main`, change both occurrences of `v0.3.5` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
+For a rolling installation that follows `main`, change both occurrences of `v0.4.0` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
 
 To reconcile the complete declared stack, replace the `sh "$bootstrap"` line above with the following command before removing the temporary file. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
 
 ```bash
-sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.3.5 --with-agent-stack --include-sensitive-plugins
+sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.4.0 --with-agent-stack --include-sensitive-plugins
 ```
 
 The complete stack includes Claude, Codex, Copilot CLI, OpenCode and VS Code integrations, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
@@ -145,7 +177,7 @@ From a clone:
 Pinned remote bootstrap in one line:
 
 ```powershell
-$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.3.5/bootstrap.ps1" -OutFile $file; Get-Content $file; & $file -Repo "$repo.git" -Ref v0.3.5
+$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.4.0/bootstrap.ps1" -OutFile $file; Get-Content $file; & $file -Repo "$repo.git" -Ref v0.4.0
 ```
 
 PowerShell `auto` mode tries symbolic links first and falls back to copies when Windows Developer Mode or sufficient privileges are unavailable.
@@ -219,7 +251,7 @@ A skill is model-invoked: only its name and description reach the system prompt,
 | `verify-changes` | — | — |
 | `docs-consolidation` | — | — |
 
-The empty cells are deliberate. Whether a comment earns its place, whether a record is real or synthetic, whether a license is compatible, and whether a change is minimal are judgments no pattern decides; a regex that guessed at them would block correct work and be switched off within a day. Those skills stay advisory.
+The empty cells are deliberate. Whether a comment earns its place, whether a record is real or synthetic, whether a license is compatible, and whether a change is minimal are judgments no pattern decides; a regex that guessed at them would block correct work and be switched off within a day. Those skills stay advisory. The 30 review and workflow skills from AI_prompts are advisory by construction: none has an instruction block or a guard rule, and each carries its own safety boundaries in its body.
 
 The guard reads a `PreToolUse` payload and exits 2 to block, returning the reason to the agent. Any malformed input exits 0, so a broken guard never stops legitimate work. Values shaped as placeholders are exempt from the secret rules, which is what the `secret-hygiene` skill already requires of examples.
 

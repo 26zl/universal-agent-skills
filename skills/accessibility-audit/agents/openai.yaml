@@ -1,0 +1,4 @@
+interface:
+  display_name: "Accessibility Audit"
+  short_description: "Audit against every WCAG 2.2 A and AA criterion"
+  default_prompt: "Use $accessibility-audit to audit against every WCAG 2.2 A and AA criterion."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare a Release"
+  short_description: "Version, changelog, release notes and verified artifacts"
+  default_prompt: "Use $prepare-release to version, changelog, release notes and verified artifacts."

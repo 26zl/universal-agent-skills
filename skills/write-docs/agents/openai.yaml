@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Documentation"
+  short_description: "Make the README and docs accurate and useful"
+  default_prompt: "Use $write-docs to make the README and docs accurate and useful."

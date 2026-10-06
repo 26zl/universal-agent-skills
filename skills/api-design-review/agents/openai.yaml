@@ -1,0 +1,4 @@
+interface:
+  display_name: "API Design Review"
+  short_description: "REST, GraphQL, gRPC, realtime, webhook and SDK surfaces"
+  default_prompt: "Use $api-design-review to rEST, GraphQL, gRPC, realtime, webhook and SDK surfaces."

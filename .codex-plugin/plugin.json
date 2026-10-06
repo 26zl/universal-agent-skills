@@ -1,7 +1,7 @@
 {
   "name": "universal-agent-skills",
-  "version": "0.3.5",
-  "description": "Portable coding-agent skills for consistent implementation and verification workflows.",
+  "version": "0.4.0",
+  "description": "Portable coding-agent skills for consistent implementation and verification workflows, plus audits for security, readiness, accessibility, operations and more.",
   "author": {
     "name": "Repository maintainers"
   },
@@ -12,13 +12,16 @@
     "codex",
     "claude-code",
     "opencode",
-    "github-copilot"
+    "github-copilot",
+    "security-audit",
+    "code-review",
+    "audits"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Universal Agent Skills",
     "shortDescription": "Portable workflows for coding agents",
-    "longDescription": "Share a canonical set of Agent Skills across Codex, Claude Code, OpenCode, GitHub Copilot, and compatible tools.",
+    "longDescription": "Share a canonical set of Agent Skills across Codex, Claude Code, OpenCode, GitHub Copilot, and compatible tools: coding conventions, verification workflows, and reviews for security, production readiness, accessibility, operations, data, APIs, AI features and repositories.",
     "developerName": "Repository maintainers",
     "category": "Developer Tools",
     "capabilities": [
@@ -35,7 +38,37 @@
       "Use $data-minimization when handling test data, logs, or personal records.",
       "Use $supply-chain-pinning when adding or updating dependencies.",
       "Use $destructive-ops-approval before irreversible operations.",
-      "Use $license-compliance before copying or vendoring third-party code."
+      "Use $license-compliance before copying or vendoring third-party code.",
+      "Use $accessibility-audit to audit against every WCAG 2.2 A and AA criterion.",
+      "Use $ai-feature-review to reliability, evaluation, safety, privacy and cost of AI features.",
+      "Use $api-design-review to rEST, GraphQL, gRPC, realtime, webhook and SDK surfaces.",
+      "Use $architecture-review to structure, risks and technical debt with a prioritized plan.",
+      "Use $cli-and-scripts-audit to make CLIs, shell and PowerShell scripts safe and portable.",
+      "Use $data-audit to schemas, migrations, queries, integrity, backups and pipelines.",
+      "Use $debug to find the root cause and fix it properly.",
+      "Use $describe-changes to commit messages and pull request descriptions.",
+      "Use $explain-codebase to an onboarding guide to an unfamiliar project.",
+      "Use $full-project-audit to score every area of a project and plan the remaining checks.",
+      "Use $implement-feature to plan, build, test and verify a feature.",
+      "Use $improve-prompt to turn any prompt into a clear, model-agnostic one.",
+      "Use $incident-response to stabilize, diagnose, then write a blameless postmortem.",
+      "Use $infrastructure-audit to review IaC, containers, Kubernetes, Nix and CI without applying.",
+      "Use $legal-compliance-review to privacy, consumer-protection, marketing and licensing risks.",
+      "Use $operations-audit to observability, deployments, backups, recovery and resilience.",
+      "Use $performance-audit to find and fix the bottlenecks that matter, with measurements.",
+      "Use $prepare-release to version, changelog, release notes and verified artifacts.",
+      "Use $production-readiness-review to decide whether a project is ready for production.",
+      "Use $refactor to make code simpler without changing behavior.",
+      "Use $repository-audit to docs, licensing, metadata, history, automation and releases.",
+      "Use $review-code to review a diff, branch or pull request.",
+      "Use $security-audit to find exploitable vulnerabilities with a 76-item checklist.",
+      "Use $start-project to scaffold a project with its whole baseline in place.",
+      "Use $threat-model to design-level threats, controls and mitigations.",
+      "Use $upgrade-dependencies to upgrade packages and runtimes safely, security fixes first.",
+      "Use $ux-review to usability, states, copy, emails, localization and CLI ergonomics.",
+      "Use $write-agent-instructions to an accurate AGENTS.md or CLAUDE.md for a repository.",
+      "Use $write-docs to make the README and docs accurate and useful.",
+      "Use $write-tests to add tests that catch real bugs."
     ],
     "brandColor": "#2563EB"
   }

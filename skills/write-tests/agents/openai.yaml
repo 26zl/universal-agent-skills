@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Tests"
+  short_description: "Add tests that catch real bugs"
+  default_prompt: "Use $write-tests to add tests that catch real bugs."
