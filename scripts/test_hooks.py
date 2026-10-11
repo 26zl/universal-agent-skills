@@ -294,7 +294,10 @@ class HookRegistration(unittest.TestCase):
         foreign = {
             "matcher": sync_hooks.MATCHER,
             "hooks": [
-                {"type": "command", "command": 'python3 "/home/me/project/hooks/guard.py"'}
+                {
+                    "type": "command",
+                    "command": 'python3 "/home/me/project/hooks/guard.py"',
+                }
             ],
         }
         original = {"hooks": {"PreToolUse": [foreign]}}
