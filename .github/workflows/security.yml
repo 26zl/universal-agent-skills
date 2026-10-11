@@ -137,6 +137,13 @@ jobs:
           --format sarif
           --output "skillspector-${{ matrix.skill }}.sarif"
 
+      - name: Rebase SARIF paths onto the repository
+        if: ${{ !cancelled() && hashFiles(format('skillspector-{0}.sarif', matrix.skill)) != '' }}
+        run: >-
+          python scripts/prefix_sarif.py
+          "skillspector-${{ matrix.skill }}.sarif"
+          "skills/${{ matrix.skill }}/"
+
       - name: Upload SARIF
         if: >-
           always() &&
@@ -185,6 +192,13 @@ jobs:
           --no-llm
           --format sarif
           --output "skillspector-external-${{ matrix.skill }}.sarif"
+
+      - name: Rebase SARIF paths onto the install layout
+        if: ${{ !cancelled() && hashFiles(format('skillspector-external-{0}.sarif', matrix.skill)) != '' }}
+        run: >-
+          python scripts/prefix_sarif.py
+          "skillspector-external-${{ matrix.skill }}.sarif"
+          ".agents/skills/${{ matrix.skill }}/"
 
       - name: Upload SARIF
         if: >-

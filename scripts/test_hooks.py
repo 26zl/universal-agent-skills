@@ -288,6 +288,24 @@ class HookRegistration(unittest.TestCase):
 
         self.assertEqual(removed, original)
 
+    def test_unrelated_guard_py_hook_is_not_claimed(self) -> None:
+        # A user's own guard.py at a different path lacks our marker; install must
+        # leave it in place and uninstall must not remove it.
+        foreign = {
+            "matcher": sync_hooks.MATCHER,
+            "hooks": [
+                {"type": "command", "command": 'python3 "/home/me/project/hooks/guard.py"'}
+            ],
+        }
+        original = {"hooks": {"PreToolUse": [foreign]}}
+
+        installed, _ = sync_hooks.replace_entry(original, uninstall=False)
+        self.assertIn(foreign, installed["hooks"]["PreToolUse"])
+        self.assertEqual(installed["hooks"]["PreToolUse"][-1], sync_hooks.entry())
+
+        removed, _ = sync_hooks.replace_entry(installed, uninstall=True)
+        self.assertEqual(removed, original)
+
     def test_entry_carries_both_platform_commands(self) -> None:
         hook = sync_hooks.entry()["hooks"][0]
         self.assertIn("python3", hook["command"])
@@ -361,7 +379,9 @@ class HookRegistration(unittest.TestCase):
             "hooks": [
                 {
                     "type": "command",
-                    "command": 'python3 "/old/checkout/hooks/guard.py"',
+                    "command": (
+                        f'python3 "/old/checkout/hooks/guard.py"  # {sync_hooks.HOOK_MARKER}'
+                    ),
                 },
                 foreign,
             ],
@@ -379,13 +399,15 @@ class HookRegistration(unittest.TestCase):
             {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [foreign]}]}},
         )
 
-    def test_ownership_survives_windows_path_separators(self) -> None:
+    def test_ownership_keys_on_marker_regardless_of_path(self) -> None:
         windows = {
             "matcher": sync_hooks.MATCHER,
             "hooks": [
                 {
                     "type": "command",
-                    "command": 'python "C:\\Users\\u\\uas\\hooks\\guard.py"',
+                    "command": (
+                        f'python "C:\\Users\\u\\uas\\hooks\\guard.py"  # {sync_hooks.HOOK_MARKER}'
+                    ),
                 }
             ],
         }
@@ -399,7 +421,9 @@ class HookRegistration(unittest.TestCase):
 
     def test_entry_from_a_moved_checkout_is_replaced_not_duplicated(self) -> None:
         stale = json.loads(json.dumps(sync_hooks.entry()))
-        stale["hooks"][0]["command"] = 'python3 "/old/checkout/hooks/guard.py"'
+        stale["hooks"][0]["command"] = (
+            f'python3 "/old/checkout/hooks/guard.py"  # {sync_hooks.HOOK_MARKER}'
+        )
         original = {"hooks": {"PreToolUse": [stale]}}
 
         installed, changed = sync_hooks.replace_entry(original, uninstall=False)
