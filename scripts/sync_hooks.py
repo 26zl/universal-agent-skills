@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 GUARD = ROOT / "hooks" / "guard.py"
 PLUGIN = ROOT / "hooks" / "opencode-guard.js"
 SHIM_MARKER = "// managed-by=universal-agent-skills; component=opencode-guard-shim"
-GUARD_SUFFIX = "/hooks/guard.py"
+HOOK_MARKER = "managed-by=universal-agent-skills guard-hook"
 EVENT = "PreToolUse"
 MATCHER = "Bash|Edit|Write|MultiEdit|NotebookEdit"
 SUPPORTED_AGENTS = ("claude", "opencode")
@@ -52,10 +52,13 @@ def entry() -> dict:
         "hooks": [
             {
                 "type": "command",
-                "command": f'command -v python3 >/dev/null 2>&1 || exit 0; python3 "{GUARD}"',
+                "command": (
+                    f'command -v python3 >/dev/null 2>&1 || exit 0; python3 "{GUARD}"'
+                    f"  # {HOOK_MARKER}"
+                ),
                 "commandWindows": (
                     "if (-not (Get-Command python -ErrorAction SilentlyContinue)) { exit 0 }; "
-                    f'python "{GUARD}"; exit $LASTEXITCODE'
+                    f'python "{GUARD}"; exit $LASTEXITCODE  # {HOOK_MARKER}'
                 ),
                 "timeout": 10,
                 "statusMessage": "Checking always-on rules...",
@@ -65,12 +68,12 @@ def entry() -> dict:
 
 
 def owns_hook(hook: object) -> bool:
-    # The checkout path is baked into the command, so ownership keys on the layout
-    # that survives a move; matching the whole entry would strand the old one.
-    # Windows renders the path with backslashes, so compare on a normalised form.
+    # Key ownership on a unique marker baked into the command rather than on the
+    # guard path: the marker survives a checkout move yet, unlike the bare
+    # "/hooks/guard.py" path, never claims a user's own unrelated guard hook.
     if not isinstance(hook, dict):
         return False
-    return GUARD_SUFFIX in str(hook.get("command", "")).replace("\\", "/")
+    return HOOK_MARKER in str(hook.get("command", ""))
 
 
 def owned(group: object) -> bool:
