@@ -1,6 +1,6 @@
 # Personal plugin stack
 
-Reviewed on 2026-07-22. The profile is declarative configuration, not proof that third-party code is safe.
+Reviewed on 2026-07-22; pins re-reviewed on 2026-10-31. The profile is declarative configuration, not proof that third-party code is safe.
 
 ## Desired Claude Code plugins
 
@@ -13,7 +13,7 @@ Reviewed on 2026-07-22. The profile is declarative configuration, not proof that
 | `firecrawl` | `claude-plugins-official` | Web crawling | Network and credential access |
 | `frontend-design` | `claude-plugins-official` | Frontend design guidance | Instruction workflow |
 | `playwright` | `claude-plugins-official` | Browser testing | Browser-control MCP server |
-| `ponytail` | `ponytail` | Agent orchestration | Executable integration code |
+| `ponytail` | `ponytail` | Agent orchestration | Executable integration code; from 5.3 the Claude Code plugin also keeps a per-task cost ledger under `~/.config/ponytail/band/` (on by default) and offers a webhook that stays off until a URL is configured |
 | `skill-creator` | `claude-plugins-official` | Skill creation | Writes skill artifacts |
 | `superpowers` | `claude-plugins-official` | Engineering workflows | Broad instruction surface |
 | `claude-mem` | `thedotmack` | Persistent cross-session context | Explicit opt-in: captures tool use and session context |
@@ -50,7 +50,7 @@ The profile does not pretend that plugin formats or hook lifecycles are intercha
 - leaves unknown plugins untouched;
 - refuses automatic marketplace source replacement;
 - excludes sensitive plugins unless `--include-sensitive` is explicit;
-- installs portable skills through the exact `skills@1.5.20` CLI with telemetry disabled;
+- installs portable skills through the exact `skills@1.7.4` CLI with telemetry disabled;
 - fetches each portable source at a full Git commit, verifies a clean checkout, and installs from that local cache.
 
 `scripts/sync_instructions.py` merges one short, ownership-marked rule block into each client's documented personal instruction file. It preserves unrelated content, rejects malformed markers, supports dry-run/check/uninstall, and never copies conversation history into instructions.
@@ -61,6 +61,8 @@ The reconciler is additive and intentionally has no external-stack uninstall mod
 
 ECC's native Codex target resolves `platform-configs` even for narrower agent/workflow module selections and writes `~/.codex/config.toml`. The default profile therefore does not run that target: doing so could replace unrelated Codex marketplaces, plugins, MCP servers, approval settings, or personal configuration. The OpenCode target remains enabled because it installs into ECC's separate `~/.opencode` adapter root. Users who deliberately want the native Codex target should run ECC directly after backing up and reviewing their Codex configuration.
 
+The profile keeps `ecc-universal` at 2.1.0 for the same reason. From 2.2.0 the OpenCode target installs into `OPENCODE_CONFIG_DIR`, `$XDG_CONFIG_HOME/opencode`, or `~/.config/opencode`, which is OpenCode's own configuration directory and the one `sync_opencode_config.py` manages, and it migrates the legacy `~/.opencode` root. The installer's `statePath` and the separate-adapter-root assumption above stop holding there, so moving to 2.2.x needs a new state path, XDG-aware state lookup in the reconciler, and a review of what the installer writes next to `opencode.json`.
+
 Claude marketplace updates remain upstream-controlled. In particular, the current external MCP definitions for Context7, Chrome DevTools, and Playwright use unpinned or `latest` npm references. Use `--update` deliberately and inspect upstream changes before broad rollout.
 
 A weekly `pin-freshness` workflow compares every pinned source and package version in the profile with upstream and maintains a single tracking issue when something moved. Applying updates stays a deliberate local step — review the change, bump the pin, then run `python3 scripts/sync_agent_stack.py --apply --update`; unattended auto-apply of third-party agent code is intentionally not offered.
@@ -69,9 +71,11 @@ At the reviewed `claude-mem` commit (`f5633c1f84181673896c038cbe285131c6d669a3`)
 
 The external portable sources are fetched at full commits before installation. Karpathy Guidelines produced no Cisco or SkillSpector findings. Humanizer produced scanner findings that require context: Cisco flagged its hidden plugin manifests and file-type inference, while SkillSpector interpreted the literal phrase "without warning" in a before/after writing example as anti-refusal language and flagged unpinned `npx skills` examples in upstream documentation. Manual inspection found no instruction to suppress safety warnings, and this profile replaces those install examples with an exact CLI version and verified commit checkout. Frontend Design is pinned to the reviewed official Claude plugin repository commit. Re-review these findings whenever a pin changes.
 
+The 2026-10-31 re-review of Humanizer 3.1.0 and Frontend Design 1.1.1 found the same shapes again: the "announced without warning" example survives in Humanizer's dash rule, its README and AGENTS.md still show unpinned `npx skills add` commands, and its read-only `scripts/validate-package.py` is what SkillSpector reports as an undeclared `file_read` capability. Frontend Design's copywriting rule "Errors don't apologize" matches the disclaimer-suppression pattern, and both skills carry license texts whose "not limited to" wording matches the scope-creep pattern. None of these is an instruction to the agent.
+
 SkillSpector also reports one low-confidence scope-creep finding on the repository's own `surgical-implementation` skill: the guardrail sentence "Expand scope only when the requested behavior cannot be implemented safely without it" pattern-matches as scope expansion. The line restricts scope changes rather than enabling them, so it is kept and documented as a false positive instead of weakening the guardrail.
 
-The matching GitHub code-scanning alerts — including license-text scope-creep notes, the permissionless `file_read` heuristic, and Cisco's hidden-manifest and file-type findings on the pinned external skills — are dismissed as reviewed false positives with per-alert comments. Re-triage any new alert whenever a pin changes.
+The matching GitHub code-scanning alerts — including license-text scope-creep notes, the permissionless `file_read` heuristic, and Cisco's hidden-manifest and file-type findings on the pinned external skills — are reviewed false positives; dismiss them with per-alert comments instead of rewording upstream text. The repository's own audit skills trigger the same pattern matchers on checklist text ("no `rm -rf` with an unset variable", "`verify=False` is never used", "without asking" inside a prohibition), and Cisco's Magika heuristic occasionally reads a four-line `agents/openai.yaml` as a protocol-buffer text file. Re-triage any new alert whenever a pin changes.
 
 ## Useful patterns adopted
 
