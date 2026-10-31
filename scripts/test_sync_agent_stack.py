@@ -410,7 +410,8 @@ class AgentStackTests(unittest.TestCase):
             all("--package=ecc-universal@2.2.3" in action.command for action in actions)
         )
         self.assertIn("opencode", actions[0].command)
-        self.assertIn("--enable-hooks", actions[0].command)
+        self.assertIn("--no-hooks", actions[0].command)
+        self.assertNotIn("hooks-runtime", actions[0].command)
 
     def test_native_plan_reports_missing_state_as_drift(self) -> None:
         plan = stack.build_native_plan(
@@ -470,7 +471,7 @@ class AgentStackTests(unittest.TestCase):
                 "request": {
                     "profile": None,
                     "modules": modules.split(","),
-                    "hookConsent": "enabled",
+                    "hookConsent": "declined",
                 },
             }
             state_path.write_text(json.dumps(state), encoding="utf-8")

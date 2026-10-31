@@ -266,13 +266,13 @@
       "statePath": ".config/opencode/ecc-install-state.json",
       "arguments": [
         "--modules",
-        "commands-core,hooks-runtime,workflow-quality",
+        "commands-core,workflow-quality",
         "--target",
         "opencode",
-        "--enable-hooks"
+        "--no-hooks"
       ],
       "risk": "elevated",
-      "reason": "ECC native OpenCode adapter inside OpenCode's configuration directory; the selected hook runtime is confirmed explicitly, and no ECC OpenCode npm plugin may be added on top."
+      "reason": "ECC native OpenCode adapter inside OpenCode's configuration directory; the hook runtime is declined explicitly, and no ECC OpenCode npm plugin may be added on top."
     }
   ],
   "portableSkills": [
