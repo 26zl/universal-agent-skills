@@ -24,7 +24,7 @@ Sources: [Claude Code skills](https://code.claude.com/docs/en/slash-commands), [
 
 OpenCode reads project skills from `.opencode/skills`, `.claude/skills`, and `.agents/skills`. It reads corresponding global locations under `~/.config/opencode/skills`, `~/.claude/skills`, and `~/.agents/skills`.
 
-Global rules live in `~/.config/opencode/AGENTS.md`. The stack profile installs Ponytail through OpenCode's own version-pinned npm-plugin command and ECC through its native OpenCode target.
+Global rules live in `~/.config/opencode/AGENTS.md`. The stack profile installs Ponytail through OpenCode's own version-pinned npm-plugin command and ECC through its native OpenCode target. Since ECC 2.2 that target installs into the configuration directory itself, resolved as `OPENCODE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`; the file ownership rules are in [Plugin stack](plugin-stack.md).
 
 Plugins load from `~/.config/opencode/plugins` and `.opencode/plugins`. A plugin's `tool.execute.before` handler runs before each tool call and aborts it by throwing, which is the OpenCode equivalent of a Claude Code `PreToolUse` hook and the second place `hooks/guard.py` is enforced.
 

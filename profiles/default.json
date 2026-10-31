@@ -261,17 +261,18 @@
     {
       "name": "ecc-opencode",
       "package": "ecc-universal",
-      "version": "2.1.0",
+      "version": "2.2.3",
       "executable": "ecc-install",
-      "statePath": ".opencode/ecc-install-state.json",
+      "statePath": ".config/opencode/ecc-install-state.json",
       "arguments": [
         "--modules",
         "commands-core,hooks-runtime,workflow-quality",
         "--target",
-        "opencode"
+        "opencode",
+        "--enable-hooks"
       ],
       "risk": "elevated",
-      "reason": "ECC native OpenCode adapter; do not combine it with an ECC OpenCode plugin."
+      "reason": "ECC native OpenCode adapter inside OpenCode's configuration directory; the selected hook runtime is confirmed explicitly, and no ECC OpenCode npm plugin may be added on top."
     }
   ],
   "portableSkills": [

@@ -407,9 +407,10 @@ class AgentStackTests(unittest.TestCase):
         )
         self.assertEqual(len(actions), 1)
         self.assertTrue(
-            all("--package=ecc-universal@2.1.0" in action.command for action in actions)
+            all("--package=ecc-universal@2.2.3" in action.command for action in actions)
         )
         self.assertIn("opencode", actions[0].command)
+        self.assertIn("--enable-hooks", actions[0].command)
 
     def test_native_plan_reports_missing_state_as_drift(self) -> None:
         plan = stack.build_native_plan(
@@ -417,6 +418,74 @@ class AgentStackTests(unittest.TestCase):
         )
         self.assertEqual(len(plan.actions), 1)
         self.assertTrue(any("ecc-opencode" in item for item in plan.drift))
+
+    def test_native_state_path_follows_the_opencode_config_directory(self) -> None:
+        installer = next(
+            item
+            for item in self.profile["nativeInstallers"]
+            if item["name"] == "ecc-opencode"
+        )
+        redirected = Path("/redirected-home")
+        with mock.patch.dict(
+            os.environ, {"XDG_CONFIG_HOME": "/xdg", "OPENCODE_CONFIG_DIR": "/occ"}
+        ):
+            self.assertEqual(
+                stack.installer_state_path(installer, Path.home()),
+                Path("/occ/ecc-install-state.json"),
+            )
+            self.assertEqual(
+                stack.installer_state_path(installer, redirected),
+                redirected / ".config" / "opencode" / "ecc-install-state.json",
+            )
+        with mock.patch.dict(
+            os.environ, {"XDG_CONFIG_HOME": "/xdg", "OPENCODE_CONFIG_DIR": ""}
+        ):
+            self.assertEqual(
+                stack.installer_state_path(installer, Path.home()),
+                Path("/xdg/opencode/ecc-install-state.json"),
+            )
+        with mock.patch.dict(
+            os.environ, {"XDG_CONFIG_HOME": "", "OPENCODE_CONFIG_DIR": ""}
+        ):
+            self.assertEqual(
+                stack.installer_state_path(installer, Path.home()),
+                Path.home() / ".config" / "opencode" / "ecc-install-state.json",
+            )
+
+    def test_native_plan_accepts_a_matching_install_state(self) -> None:
+        installer = next(
+            item
+            for item in self.profile["nativeInstallers"]
+            if item["name"] == "ecc-opencode"
+        )
+        modules = stack.argument_value(installer["arguments"], "--modules")
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            state_path = stack.installer_state_path(installer, home)
+            state_path.parent.mkdir(parents=True)
+            state = {
+                "schemaVersion": "ecc.install.v1",
+                "source": {"repoVersion": installer["version"]},
+                "target": {"target": "opencode"},
+                "request": {
+                    "profile": None,
+                    "modules": modules.split(","),
+                    "hookConsent": "enabled",
+                },
+            }
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            self.assertEqual(
+                stack.build_native_installer_actions(self.profile, "npx-test", home),
+                [],
+            )
+            for key, value in (("hookConsent", None), ("modules", ["commands-core"])):
+                drifted = json.loads(json.dumps(state))
+                drifted["request"][key] = value
+                state_path.write_text(json.dumps(drifted), encoding="utf-8")
+                actions = stack.build_native_installer_actions(
+                    self.profile, "npx-test", home
+                )
+                self.assertEqual(len(actions), 1)
 
     def test_portable_skill_plan_verifies_installed_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -781,6 +850,7 @@ class AgentStackTests(unittest.TestCase):
                 "UAS_HOME": "",
                 "UAS_SOURCE_CACHE": "",
                 "XDG_CONFIG_HOME": "",
+                "OPENCODE_CONFIG_DIR": "",
                 "XDG_DATA_HOME": "",
                 "LOCALAPPDATA": "",
             },

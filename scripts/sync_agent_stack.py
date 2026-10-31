@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import sync_instructions as instruction_sync
-from sync_opencode_config import config_home
+from sync_opencode_config import config_path, config_root
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1023,10 +1023,7 @@ def build_copilot_plan(
 
 def opencode_config_path() -> Path:
     home = Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
-    base = config_home(home) / "opencode"
-    jsonc = base / "opencode.jsonc"
-    plain = base / "opencode.json"
-    return jsonc if jsonc.exists() or not plain.exists() else plain
+    return config_path(home)
 
 
 def opencode_plugin_entries(config_text: str) -> list[str]:
@@ -1088,6 +1085,23 @@ def argument_value(arguments: list[str], flag: str) -> str | None:
     return arguments[index + 1]
 
 
+def installer_state_path(installer: dict[str, Any], home: Path) -> Path:
+    relative = Path(installer["statePath"])
+    # ".config/opencode" is OpenCode's configuration directory, which OpenCode and
+    # ecc-install relocate through OPENCODE_CONFIG_DIR or XDG_CONFIG_HOME.
+    if relative.parts[:2] == (".config", "opencode"):
+        return config_root(home).joinpath(*relative.parts[2:])
+    return home / relative
+
+
+def installer_hook_consent(arguments: list[str]) -> str | None:
+    if "--enable-hooks" in arguments:
+        return "enabled"
+    if "--no-hooks" in arguments:
+        return "declined"
+    return None
+
+
 def build_native_installer_actions(
     profile: dict[str, Any],
     npx_command: str = "npx",
@@ -1096,7 +1110,7 @@ def build_native_installer_actions(
     actions: list[Action] = []
     resolved_home = home or Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
     for installer in profile.get("nativeInstallers", []):
-        state_path = resolved_home / installer["statePath"]
+        state_path = installer_state_path(installer, resolved_home)
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -1120,6 +1134,7 @@ def build_native_installer_actions(
             and target_state.get("target") == target
             and request_state.get("profile") == requested_profile
             and request_state.get("modules", []) == requested_modules
+            and request_state.get("hookConsent") == installer_hook_consent(arguments)
         ):
             continue
         package = f"{installer['package']}@{installer['version']}"

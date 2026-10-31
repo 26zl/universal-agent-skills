@@ -14,6 +14,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = ROOT / "profiles" / "default.json"
+ECC_STATE_NAME = "ecc-install-state.json"
 
 
 def config_home(home: Path) -> Path:
@@ -25,11 +26,46 @@ def config_home(home: Path) -> Path:
     return home / ".config"
 
 
+def config_root(home: Path) -> Path:
+    # OpenCode and ecc-install consult OPENCODE_CONFIG_DIR before the XDG lookup;
+    # the override is subject to the same containment rule as XDG_CONFIG_HOME.
+    override = os.environ.get("OPENCODE_CONFIG_DIR")
+    if override and home == Path.home():
+        return Path(override).expanduser()
+    return config_home(home) / "opencode"
+
+
+def ecc_managed_paths(root: Path) -> set[Path]:
+    """Files that ECC's native OpenCode installer records as its own."""
+    try:
+        state = json.loads((root / ECC_STATE_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return set()
+    if not isinstance(state, dict) or state.get("schemaVersion") != "ecc.install.v1":
+        return set()
+    operations = state.get("operations")
+    if not isinstance(operations, list):
+        return set()
+    return {
+        Path(operation["destinationPath"]).resolve()
+        for operation in operations
+        if isinstance(operation, dict)
+        and operation.get("ownership") == "managed"
+        and isinstance(operation.get("destinationPath"), str)
+    }
+
+
 def config_path(home: Path) -> Path:
-    base = config_home(home) / "opencode"
+    base = config_root(home)
     jsonc = base / "opencode.jsonc"
     plain = base / "opencode.json"
-    return jsonc if jsonc.exists() or not plain.exists() else plain
+    if jsonc.exists() or not plain.exists():
+        return jsonc
+    # ECC 2.2 ships its own opencode.json and replaces it on every upgrade, so
+    # the managed MCP entries live in opencode.jsonc next to it instead.
+    if plain.resolve() in ecc_managed_paths(base):
+        return jsonc
+    return plain
 
 
 def desired_servers(profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
