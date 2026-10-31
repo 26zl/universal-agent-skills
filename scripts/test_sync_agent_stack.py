@@ -242,7 +242,7 @@ class AgentStackTests(unittest.TestCase):
             self.profile, cache_root=Path("/tmp/test-agent-stack-cache")
         )
         self.assertEqual(len(actions), 3)
-        self.assertIn("skills@1.5.20", actions[0].command)
+        self.assertIn("skills@1.7.4", actions[0].command)
         self.assertEqual(dict(actions[0].environment)["DISABLE_TELEMETRY"], "1")
         self.assertEqual(
             actions[0].checkout.commit,
@@ -267,7 +267,7 @@ class AgentStackTests(unittest.TestCase):
                 "add",
                 "DietrichGebert/ponytail",
                 "--ref",
-                "16f29800fd2681bdf24f3eb4ccffe38be3baec6b",
+                "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846",
             ),
         )
         self.assertTrue(any(command[-1] == "ponytail@ponytail" for command in commands))
@@ -349,7 +349,7 @@ class AgentStackTests(unittest.TestCase):
                     "add",
                     "DietrichGebert/ponytail",
                     "--ref",
-                    "16f29800fd2681bdf24f3eb4ccffe38be3baec6b",
+                    "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846",
                 ),
                 commands,
             )
@@ -389,14 +389,14 @@ class AgentStackTests(unittest.TestCase):
             (
                 "opencode-test",
                 "plugin",
-                "@dietrichgebert/ponytail@4.8.4",
+                "@dietrichgebert/ponytail@5.3.3",
                 "--global",
             ),
         )
         for config in (
-            '{"plugin": [], "note": "@dietrichgebert/ponytail@4.8.4"}',
-            '{"plugin": ["@dietrichgebert/ponytail@4.8.40"]}',
-            '{"plugin": []} // @dietrichgebert/ponytail@4.8.4',
+            '{"plugin": [], "note": "@dietrichgebert/ponytail@5.3.3"}',
+            '{"plugin": ["@dietrichgebert/ponytail@5.3.30"]}',
+            '{"plugin": []} // @dietrichgebert/ponytail@5.3.3',
         ):
             drifted = stack.build_opencode_plan(self.profile, config, update=False)
             self.assertTrue(drifted.drift)
@@ -529,7 +529,7 @@ class AgentStackTests(unittest.TestCase):
                 "--",
                 "npx",
                 "-y",
-                "@upstash/context7-mcp@3.2.5",
+                "@upstash/context7-mcp@4.4.4",
             ),
             commands,
         )
@@ -578,7 +578,7 @@ class AgentStackTests(unittest.TestCase):
             "transport": {
                 "type": "stdio",
                 "command": "npx",
-                "args": ["-y", "@upstash/context7-mcp@3.2.5"],
+                "args": ["-y", "@upstash/context7-mcp@4.4.4"],
             },
             "enabled": False,
         }
@@ -680,12 +680,12 @@ class AgentStackTests(unittest.TestCase):
             {
                 "context7": {
                     "type": "local",
-                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
+                    "command": ["npx", "-y", "@upstash/context7-mcp@4.4.4"],
                     "enabled": True,
                 },
                 "Context7": {
                     "type": "local",
-                    "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
+                    "command": ["npx", "-y", "@upstash/context7-mcp@4.4.4"],
                     "enabled": True,
                 },
             },
@@ -703,7 +703,7 @@ class AgentStackTests(unittest.TestCase):
               "mcp": {
                 "context7": {
                   "type": "local",
-                  "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
+                  "command": ["npx", "-y", "@upstash/context7-mcp@4.4.4"],
                   "enabled": true,
                 },
               },
@@ -749,7 +749,7 @@ class AgentStackTests(unittest.TestCase):
             "transport": {
                 "type": "stdio",
                 "command": "npx",
-                "args": ["-y", "@upstash/context7-mcp@3.2.5"],
+                "args": ["-y", "@upstash/context7-mcp@4.4.4"],
                 "env": {"UNDECLARED": "1"},
                 "env_vars": [],
                 "cwd": None,
@@ -758,7 +758,7 @@ class AgentStackTests(unittest.TestCase):
         self.assertFalse(stack.codex_mcp_matches(context7, codex))
         opencode = {
             "type": "local",
-            "command": ["npx", "-y", "@upstash/context7-mcp@3.2.5"],
+            "command": ["npx", "-y", "@upstash/context7-mcp@4.4.4"],
             "enabled": True,
             "environment": {"UNDECLARED": "1"},
         }
@@ -766,7 +766,7 @@ class AgentStackTests(unittest.TestCase):
         copilot = {
             "type": "local",
             "command": "npx",
-            "args": ["-y", "@upstash/context7-mcp@3.2.5"],
+            "args": ["-y", "@upstash/context7-mcp@4.4.4"],
             "enabled": True,
             "tools": ["*"],
             "source": "user",

@@ -4,7 +4,7 @@
   "description": "Personal cross-agent stack for Claude Code, Codex, OpenCode, and GitHub Copilot.",
   "skillsCli": {
     "package": "skills",
-    "version": "1.5.20",
+    "version": "1.7.4",
     "disableTelemetry": true
   },
   "claude": {
@@ -118,7 +118,7 @@
       {
         "name": "ponytail",
         "source": "DietrichGebert/ponytail",
-        "ref": "16f29800fd2681bdf24f3eb4ccffe38be3baec6b"
+        "ref": "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846"
       }
     ],
     "plugins": [
@@ -210,7 +210,7 @@
     "plugins": [
       {
         "package": "@dietrichgebert/ponytail",
-        "version": "4.8.4",
+        "version": "5.3.3",
         "risk": "elevated",
         "reason": "OpenCode-native Ponytail rules and commands."
       }
@@ -232,7 +232,7 @@
       "command": [
         "npx",
         "-y",
-        "@upstash/context7-mcp@3.2.5"
+        "@upstash/context7-mcp@4.4.4"
       ],
       "agents": [
         "codex",
@@ -248,7 +248,7 @@
       "command": [
         "npx",
         "-y",
-        "@playwright/mcp@0.0.78"
+        "@playwright/mcp@0.0.83"
       ],
       "agents": [
         "copilot"
@@ -286,7 +286,7 @@
     },
     {
       "name": "humanizer",
-      "source": "https://github.com/blader/humanizer/tree/523374dee72d67c7b2b5f858ea0094ffda49c3ac",
+      "source": "https://github.com/blader/humanizer/tree/0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",
       "agents": [
         "codex",
         "opencode"
@@ -295,7 +295,7 @@
     },
     {
       "name": "frontend-design",
-      "source": "https://github.com/anthropics/claude-plugins-official/tree/df098247831a98731abfc96b4b1298292f03e9c6",
+      "source": "https://github.com/anthropics/claude-plugins-official/tree/a7ba5b93db0c7c8d17f3f1d25853adca79598a1a",
       "agents": [
         "codex",
         "opencode"
