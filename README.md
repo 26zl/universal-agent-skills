@@ -463,7 +463,7 @@ CI adds:
 - installer tests on Linux, macOS, and Windows;
 - a version-pinned [Cisco AI Defense Skill Scanner](https://github.com/cisco-ai-defense/skill-scanner) with strict policy, behavioral analysis, and a high-severity failure gate;
 - commit-pinned [NVIDIA SkillSpector](https://github.com/NVIDIA/SkillSpector) static scans and SARIF uploads;
-- hash-locked dependencies for both scanners under `.github/scanners/`;
+- hash-locked dependencies for both scanners under `ci/scanners/`;
 - isolated scans of the commit-pinned Humanizer and Frontend Design sources declared in the profile;
 - a weekly pin-freshness workflow that files a tracking issue when a pinned upstream source or package version moves;
 - a check that the generated skills match the AI_prompts commit in `ai-prompts.lock`, and a weekly tracking issue for AI_prompts changes that are not exported yet;

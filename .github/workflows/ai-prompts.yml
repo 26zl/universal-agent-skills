@@ -1,5 +1,6 @@
 name: AI_prompts sync
 
+# Only pull requests trigger this workflow: it runs AI_prompts code, and a pull request's cache scope cannot reach the default branch.
 on:
   pull_request:
     paths:
@@ -7,9 +8,6 @@ on:
       - "ai-prompts.lock"
       - ".codex-plugin/plugin.json"
       - ".github/workflows/ai-prompts.yml"
-  schedule:
-    - cron: "41 5 * * 1"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,8 +15,6 @@ permissions:
 jobs:
   exported:
     name: Generated skills match the recorded AI_prompts commit
-    # AI_prompts code runs only for pull requests, whose cache scope cannot reach the default branch.
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -60,64 +56,4 @@ jobs:
             git diff --stat -- skills .codex-plugin/plugin.json ai-prompts.lock
             echo "::error::generated files differ from AI_prompts at the recorded commit; change them in AI_prompts and rerun scripts/export-skills.py"
             exit 1
-          fi
-
-  upstream:
-    name: AI_prompts changes not yet exported
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      # Compares commits through the API instead of running the exporter, so no AI_prompts code runs here.
-      - name: List exported sources changed since the recorded commit
-        id: compare
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          commit=$(awk '$1 == "commit" { print $2 }' ai-prompts.lock)
-          if ! printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error file=ai-prompts.lock::the commit line needs a full AI_prompts commit SHA"
-            exit 1
-          fi
-          branch=$(gh api repos/26zl/AI_prompts --jq .default_branch)
-          head=$(gh api "repos/26zl/AI_prompts/commits/$branch" --jq .sha)
-          changed=$(gh api "repos/26zl/AI_prompts/compare/$commit...$head" \
-            --jq '.files[].filename | select(test("^(audits|development|operations|prompting)/[^/]+[.]md$|^scripts/export-skills[.]py$"))')
-          if [ -z "$changed" ]; then
-            echo "stale=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "## AI_prompts changes not yet exported"
-            echo
-            echo "AI_prompts \`$branch\` is at \`$head\`; \`ai-prompts.lock\` records \`$commit\`. These sources of the generated skills changed in between:"
-            echo
-            printf '%s\n' "$changed" | sed 's/^/- /'
-            echo
-            echo "Run \`scripts/export-skills.py <path-to-this-checkout>\` from an AI_prompts checkout at \`$head\` and open a pull request with the result."
-          } > report.md
-          cat report.md >> "$GITHUB_STEP_SUMMARY"
-          echo "stale=true" >> "$GITHUB_OUTPUT"
-
-      - name: Open or update the tracking issue
-        if: steps.compare.outputs.stale == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          title="AI_prompts changes not yet exported"
-          number=$(gh issue list --state open --json number,title \
-            --jq "[.[] | select(.title == \"$title\")][0].number // empty")
-          if [ -n "$number" ]; then
-            gh issue edit "$number" --body-file report.md
-          else
-            gh issue create --title "$title" --body-file report.md
           fi

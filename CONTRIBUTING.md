@@ -101,10 +101,10 @@ The tag push reruns the workflows, and `validate.py` then also checks that the t
 
 ## CI scanner environments
 
-The Cisco Skill Scanner and SkillSpector run from the uv projects under `.github/scanners/`, whose `uv.lock` files pin every dependency with hashes. Dependabot updates them. To change one by hand, edit the version or commit in that directory's `pyproject.toml` and relock it with the uv version that `.github/workflows/security.yml` pins:
+The Cisco Skill Scanner and SkillSpector run from the uv projects under `ci/scanners/`, whose `uv.lock` files pin every dependency with hashes. Dependabot updates them. To change one by hand, edit the version or commit in that directory's `pyproject.toml` and relock it with the uv version that `.github/workflows/security.yml` pins:
 
 ```bash
-uvx uv@0.13.6 lock --project .github/scanners/cisco-skill-scanner
+uvx uv@0.13.6 lock --project ci/scanners/cisco-skill-scanner
 ```
 
 ## Security review

@@ -8,7 +8,7 @@ on:
       - "scripts/sync_agent_stack.py"
       - "scripts/sync_instructions.py"
       - "scripts/sync_opencode_config.py"
-      - ".github/scanners/**"
+      - "ci/scanners/**"
       - ".github/workflows/security.yml"
   push:
     branches: [main]
@@ -19,7 +19,7 @@ on:
       - "scripts/sync_agent_stack.py"
       - "scripts/sync_instructions.py"
       - "scripts/sync_opencode_config.py"
-      - ".github/scanners/**"
+      - "ci/scanners/**"
       - ".github/workflows/security.yml"
   schedule:
     - cron: "17 4 * * 1"
@@ -54,8 +54,8 @@ jobs:
       - name: Install locked Skill Scanner
         id: install
         run: |
-          uv sync --locked --project .github/scanners/cisco-skill-scanner
-          echo "$PWD/.github/scanners/cisco-skill-scanner/.venv/bin" >> "$GITHUB_PATH"
+          uv sync --locked --project ci/scanners/cisco-skill-scanner
+          echo "$PWD/ci/scanners/cisco-skill-scanner/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run strict behavioral scan
         run: >-
@@ -173,8 +173,8 @@ jobs:
 
       - name: Install locked SkillSpector
         run: |
-          uv sync --locked --project .github/scanners/skillspector
-          echo "$PWD/.github/scanners/skillspector/.venv/bin" >> "$GITHUB_PATH"
+          uv sync --locked --project ci/scanners/skillspector
+          echo "$PWD/ci/scanners/skillspector/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Scan without external LLM calls
         env:
@@ -232,8 +232,8 @@ jobs:
 
       - name: Install locked SkillSpector
         run: |
-          uv sync --locked --project .github/scanners/skillspector
-          echo "$PWD/.github/scanners/skillspector/.venv/bin" >> "$GITHUB_PATH"
+          uv sync --locked --project ci/scanners/skillspector
+          echo "$PWD/ci/scanners/skillspector/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Materialize commit-pinned portable skills
         run: >-
