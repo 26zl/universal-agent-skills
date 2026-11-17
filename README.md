@@ -71,6 +71,7 @@ The installers are idempotent, support symbolic links or copies, track what they
 │   ├── write-docs/
 │   └── write-tests/
 ├── profiles/default.json           # Desired external plugin/skill stack
+├── ai-prompts.lock                 # AI_prompts commit and the skills generated from it
 ├── adapters/agents.tsv             # Agent discovery paths
 ├── .claude-plugin/                 # Claude plugin + marketplace metadata
 ├── .codex-plugin/                  # Codex plugin metadata
@@ -93,7 +94,7 @@ The installers are idempotent, support symbolic links or copies, track what they
 
 `secret-hygiene`, `data-minimization`, `supply-chain-pinning`, `destructive-ops-approval`, and `license-compliance` form a workplace governance set: secret values never enter code or output, real personal data stays out of tests and logs, dependencies are justified and pinned, irreversible operations wait for explicit approval, and third-party code enters only with a compatible license and preserved attribution.
 
-The remaining 30 skills are task-shaped reviews and workflows generated from the [AI_prompts](https://github.com/26zl/AI_prompts) collection, which stays their source of truth. `full-project-audit`, `production-readiness-review`, `security-audit`, `threat-model`, `legal-compliance-review`, `accessibility-audit`, `ux-review`, `performance-audit`, `operations-audit`, `infrastructure-audit`, `data-audit`, `api-design-review`, `architecture-review`, `ai-feature-review`, `cli-and-scripts-audit` and `repository-audit` review a project; `start-project`, `implement-feature`, `debug`, `write-tests`, `refactor`, `review-code`, `explain-codebase`, `write-docs`, `upgrade-dependencies`, `describe-changes`, `prepare-release` and `incident-response` do the work; `improve-prompt` and `write-agent-instructions` help with prompts and agent setup. Each starts with a Settings block, for example `Mode: report`; text given with the invocation overrides it, and reviews default to read-only or to contained fixes that are never committed. Edit these skills in AI_prompts and regenerate them with its `scripts/export-skills.py`; the copies here are not edited directly.
+The remaining 30 skills are task-shaped reviews and workflows generated from the [AI_prompts](https://github.com/26zl/AI_prompts) collection, which stays their source of truth. `full-project-audit`, `production-readiness-review`, `security-audit`, `threat-model`, `legal-compliance-review`, `accessibility-audit`, `ux-review`, `performance-audit`, `operations-audit`, `infrastructure-audit`, `data-audit`, `api-design-review`, `architecture-review`, `ai-feature-review`, `cli-and-scripts-audit` and `repository-audit` review a project; `start-project`, `implement-feature`, `debug`, `write-tests`, `refactor`, `review-code`, `explain-codebase`, `write-docs`, `upgrade-dependencies`, `describe-changes`, `prepare-release` and `incident-response` do the work; `improve-prompt` and `write-agent-instructions` help with prompts and agent setup. Each starts with a Settings block, for example `Mode: report`; text given with the invocation overrides it, and reviews default to read-only or to contained fixes that are never committed. Edit these skills in AI_prompts and regenerate them with its `scripts/export-skills.py`; the copies here are not edited directly. `ai-prompts.lock` records the AI_prompts commit they were exported from and which skills are generated. CI fails when they differ from what that commit exports, and a weekly job opens an issue when AI_prompts has changes that are not exported yet.
 
 ## Supported targets
 
@@ -117,7 +118,16 @@ cd universal-agent-skills
 ./bootstrap.sh
 ```
 
-The default is a global symbolic-link installation for Codex/GitHub Copilot, Claude Code, and OpenCode. Editing a canonical skill updates every linked agent immediately.
+The default is a global symbolic-link installation of the 11 core skills for Codex/GitHub Copilot, Claude Code, and OpenCode. Editing a canonical skill updates every linked agent immediately.
+
+The 30 review and workflow skills from AI_prompts are task-shaped, so a plain install leaves them out of every session. Add them per project where they are needed, by name or all at once:
+
+```bash
+./install.sh --scope project --project-dir ~/path/to/project --skill security-audit --skill threat-model
+./install.sh --scope project --project-dir ~/path/to/project --all-skills
+```
+
+`--all-skills` (`-AllSkills` in PowerShell) also works for a global install. `--skill` selects exactly the named skills, core or generated.
 
 You do not need to uninstall existing entries first. The direct skill installer manages only its own recorded targets and refuses unmanaged path conflicts unless `--force` is explicit. The stack reconciler leaves entries outside the profile unchanged; for entries declared in the profile, `--apply` may install or enable them, and `--update` may update them.
 
@@ -133,6 +143,8 @@ Install only selected agents or skills:
 ./install.sh --agents codex,opencode
 ./install.sh --skill coding-style
 ```
+
+Every installed skill adds its name and description to each session of that agent: the 11 core skills about 4,200 characters, and the 30 generated ones about 7,800 more, on the order of 1,000 and 2,000 tokens.
 
 Install into the current project instead of the user profile:
 
@@ -156,13 +168,13 @@ rm -f "$bootstrap"
 
 For a rolling installation that follows `main`, change both occurrences of `v0.4.0` to `main`. Rerun the same command to sync another computer or refresh an existing installation.
 
-To reconcile the complete declared stack, replace the `sh "$bootstrap"` line above with the following command before removing the temporary file. `claude-mem` is excluded unless the command also includes `--include-sensitive-plugins` because it persistently captures session and tool-use context:
+To reconcile the complete declared stack, replace the `sh "$bootstrap"` line above with the following command before removing the temporary file:
 
 ```bash
-sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.4.0 --with-agent-stack --include-sensitive-plugins
+sh "$bootstrap" --repo https://github.com/26zl/universal-agent-skills.git --ref v0.4.0 --with-agent-stack
 ```
 
-The complete stack includes Claude, Codex, Copilot CLI, OpenCode and VS Code integrations, Context7/Playwright MCP servers, ECC adapters, pinned portable skills, and global comment instructions. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
+The complete stack includes Claude, Codex, Copilot CLI, OpenCode and VS Code integrations, Context7/Playwright MCP servers, pinned portable skills, and global comment instructions. The bootstrap itself refuses root execution (Windows administrator sessions remain allowed because symbolic links may require elevation there), accepts HTTPS or SSH repositories by default, verifies an existing checkout's origin, refuses dirty managed checkouts, and checks out the exact fetched ref.
 
 Agent-stack reconciliation requires Python 3.9 or newer. Direct repository-skill installation does not require Python.
 
@@ -174,28 +186,37 @@ From a clone:
 .\bootstrap.ps1
 ```
 
-Pinned remote bootstrap in one line:
+Pinned remote bootstrap: download the script and read it first.
 
 ```powershell
-$repo='https://github.com/26zl/universal-agent-skills'; $file=Join-Path $env:TEMP 'uas-bootstrap.ps1'; Invoke-WebRequest "$repo/raw/v0.4.0/bootstrap.ps1" -OutFile $file; Get-Content $file; & $file -Repo "$repo.git" -Ref v0.4.0
+$repo = 'https://github.com/26zl/universal-agent-skills'
+$file = Join-Path $env:TEMP 'uas-bootstrap.ps1'
+Invoke-WebRequest "$repo/raw/v0.4.0/bootstrap.ps1" -OutFile $file
+Get-Content $file
+```
+
+Then run the reviewed copy in the same session and remove it:
+
+```powershell
+& $file -Repo "$repo.git" -Ref v0.4.0
+Remove-Item $file
 ```
 
 PowerShell `auto` mode tries symbolic links first and falls back to copies when Windows Developer Mode or sufficient privileges are unavailable.
 
-Use `-WithAgentStack` to include the external stack and `-IncludeSensitivePlugins` to opt into `claude-mem`.
+Use `-WithAgentStack` to include the external stack.
 
 ## Personal agent stack
 
-The canonical profile reflects the current Claude setup plus `claude-mem` and `humanizer`. It includes:
+The canonical profile declares only plugins that load when an agent needs them and add something the agent and this repository do not already provide. It includes:
 
-- `andrej-karpathy-skills`, ECC, Ponytail, `claude-mem`, and Humanizer from their own marketplaces;
-- the official `code-simplifier`, Context7, Firecrawl, Frontend Design, Playwright, Skill Creator, and Superpowers plugins;
-- commit-pinned Karpathy Guidelines, Humanizer, and Frontend Design skills for Codex/OpenCode; Copilot discovers the Codex copies through `~/.agents/skills`.
-- Codex-native Browser, Computer Use, Superpowers, and Ponytail plugins.
-- Copilot CLI Ponytail plus the VS Code extension, repository instructions, shared skills, Context7, and Playwright.
-- Ponytail and ECC through their native OpenCode integrations.
+- the official Context7, Frontend Design, and Playwright plugins, and Humanizer from its own marketplace;
+- commit-pinned Humanizer and Frontend Design skills for Codex/OpenCode; Copilot discovers the Codex copies through `~/.agents/skills`;
+- Codex-native Browser and Computer Use plugins beside the bundled document, PDF, spreadsheet, presentation, template, site, and visualization plugins;
+- the VS Code Copilot extension, repository instructions, and shared skills for Copilot;
+- exact Context7 MCP packages for Codex, OpenCode, and Copilot CLI, and Playwright MCP for Copilot CLI.
 
-ECC's native Codex target is intentionally not automated because it writes the complete `~/.codex/config.toml`, even when narrower workflow modules are requested. Portable skills, Codex-native plugins, and MCP mappings provide the safe Codex layer without replacing unrelated user settings.
+Plugins that inject context through session, prompt, or tool-call hooks, or that make their own model calls in the background, are left out, because they spend tokens and steer every turn whether or not the task needs them; Ponytail, ECC, Superpowers, and `claude-mem` were removed for that reason. So are plugins that duplicate a built-in capability or a skill here: `code-simplifier`, Skill Creator, Firecrawl, and the Karpathy Guidelines. [Plugin stack](docs/plugin-stack.md#removed-plugins) has the evidence and the commands that remove them from a machine that applied an earlier profile.
 
 Audit without changing the machine:
 
@@ -211,11 +232,7 @@ Install missing standard plugins, integrations, instructions, and portable skill
 python3 scripts/sync_agent_stack.py --apply
 ```
 
-Include persistent-memory capture only after reviewing its privacy and storage behavior:
-
-```bash
-python3 scripts/sync_agent_stack.py --apply --include-sensitive
-```
+A plugin that persistently captures session or tool-use context must be declared with `"risk": "sensitive"` and `"requiresExplicitOptIn": true`; it is then installed only with `--include-sensitive` (`--include-sensitive-plugins` or `-IncludeSensitivePlugins` through the bootstrap). The default profile declares none.
 
 Add `--update` to refresh already-installed external plugins. The reconciler never removes plugins that are not in the profile and refuses to replace a marketplace whose source differs. It disables anonymous `skills` CLI telemetry and uses exact package versions plus full commit URLs for portable third-party skills.
 
@@ -303,7 +320,9 @@ Refresh a normal branch clone and reinstall:
 
 For a checkout created by `bootstrap.sh`, rerun the bootstrap command with the same repository and ref. Link installations immediately use the refreshed source; copy installations are recopied.
 
-The PowerShell equivalents are `-DryRun` and `-Update`. To remove installed skills or plugins, see [Uninstall](#uninstall).
+The PowerShell equivalents are `-DryRun` (or `-WhatIf`) and `-Update`. To remove installed skills or plugins, see [Uninstall](#uninstall).
+
+`--version` (`-Version` in PowerShell) prints the version of the checkout. The POSIX scripts exit 0 on success, 1 when an operation fails, and 2 for invalid usage; PowerShell reports failures as terminating errors.
 
 If a target already exists and is not managed by this repository, installation stops. `--force` or `-Force` moves the conflict to a timestamped backup instead of deleting it.
 
@@ -315,6 +334,8 @@ State is stored under:
 ## Native plugin installation
 
 Direct skill installation is the most portable option. Native plugins are useful when an agent should manage the bundle as a versioned package.
+
+The native plugin bundles all 41 skills, including the 30 review and workflow skills; the direct installer is the leaner choice.
 
 Use one method per machine: combining the native plugin with a direct installation surfaces the same skills twice. Plugin-provided skills are namespaced by the client, so neither copy overrides the other; they simply both appear. The installer warns when it finds a native plugin beside the direct installation, but it never removes the plugin for you.
 
@@ -401,7 +422,7 @@ Removing a marketplace also removes the plugins installed from it: Claude Code w
 
 ### External stack plugins
 
-Third-party plugins declared in the profile (for example `ponytail`) may predate this repository, so their removal is deliberately manual. Remove them with each plugin's upstream manager after reviewing stored data and shared dependencies; see `docs/plugin-stack.md`.
+Third-party plugins declared in the profile (for example `humanizer`) may predate this repository, so their removal is deliberately manual. Remove them with each plugin's upstream manager after reviewing stored data and shared dependencies; see `docs/plugin-stack.md`. The reconciler does not remove a plugin that has left the profile either: a machine that applied an earlier profile keeps Ponytail, ECC, Superpowers, and `claude-mem` until they are removed as described in [Removed plugins](docs/plugin-stack.md#removed-plugins).
 
 ## Adding a skill
 
@@ -442,8 +463,10 @@ CI adds:
 - installer tests on Linux, macOS, and Windows;
 - a version-pinned [Cisco AI Defense Skill Scanner](https://github.com/cisco-ai-defense/skill-scanner) with strict policy, behavioral analysis, and a high-severity failure gate;
 - commit-pinned [NVIDIA SkillSpector](https://github.com/NVIDIA/SkillSpector) static scans and SARIF uploads;
-- isolated scans of the commit-pinned Karpathy Guidelines, Humanizer, and Frontend Design sources declared in the profile;
+- hash-locked dependencies for both scanners under `.github/scanners/`;
+- isolated scans of the commit-pinned Humanizer and Frontend Design sources declared in the profile;
 - a weekly pin-freshness workflow that files a tracking issue when a pinned upstream source or package version moves;
+- a check that the generated skills match the AI_prompts commit in `ai-prompts.lock`, and a weekly tracking issue for AI_prompts changes that are not exported yet;
 - pinned GitHub Action commits and Dependabot updates.
 
 Automated scanners are defense-in-depth, not a guarantee. Review every skill and bundled executable before trusting it. See [SECURITY.md](SECURITY.md).

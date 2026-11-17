@@ -233,6 +233,44 @@ def validate_adapters() -> list[str]:
     return errors
 
 
+def validate_ai_prompts_lock(path: Path, skills_dir: Path) -> list[str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return [f"{path}: {exc}"]
+    errors: list[str] = []
+    fields: dict[str, list[str]] = {}
+    for number, line in enumerate(lines, 1):
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) != 2 or parts[0] not in {"source", "commit", "skill"}:
+            errors.append(
+                f"{path}:{number}: expected 'source', 'commit', or 'skill' and one value"
+            )
+            continue
+        fields.setdefault(parts[0], []).append(parts[1])
+    if len(fields.get("source", [])) != 1:
+        errors.append(f"{path}: needs exactly one source line")
+    commits = fields.get("commit", [])
+    if len(commits) != 1 or not re.fullmatch(
+        r"[0-9a-f]{40}(?:-dirty)?|unknown", commits[0]
+    ):
+        errors.append(f"{path}: needs one commit line with a full SHA")
+    names = fields.get("skill", [])
+    if not names:
+        errors.append(f"{path}: lists no skills")
+    if len(names) != len(set(names)):
+        errors.append(f"{path}: lists a skill twice")
+    for name in names:
+        if (
+            not NAME_RE.fullmatch(name)
+            or not (skills_dir / name / "SKILL.md").is_file()
+        ):
+            errors.append(f"{path}: lists {name!r}, which is not a skill here")
+    return errors
+
+
 def validate_profiles() -> list[str]:
     errors: list[str] = []
     profiles_dir = ROOT / "profiles"
@@ -259,6 +297,7 @@ def main() -> int:
     errors.extend(validate_manifests([path.name for path in skill_dirs]))
     errors.extend(validate_adapters())
     errors.extend(validate_profiles())
+    errors.extend(validate_ai_prompts_lock(ROOT / "ai-prompts.lock", SKILLS))
 
     if os.name != "nt":
         for name in (

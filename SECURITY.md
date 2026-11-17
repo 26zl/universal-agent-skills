@@ -28,7 +28,7 @@ The external stack reconciler is dry-run by default. `--apply` authorizes remote
 
 Portable third-party skills are fetched into a managed cache at a full Git commit, verified for the expected HEAD and a clean working tree, then installed with a fixed `skills` CLI version. CLI telemetry is disabled. The installer refuses an existing cache path that is unmanaged, dirty, or at another commit. Claude marketplaces cannot be pinned to an exact commit through the marketplace-add command, so review updates before applying them.
 
-`claude-mem` is opt-in because it captures session and tool-use context, stores persistent local data, and can support cloud sync. Never commit its database, transcripts, settings, credentials, or generated observations. Use its private-content controls, retention settings, and local data location only after reviewing the upstream documentation.
+A plugin that captures session or tool-use context or keeps persistent memory must be marked `requiresExplicitOptIn` and is installed only with `--include-sensitive`; the default profile declares none. Never commit such a plugin's database, transcripts, settings, credentials, or generated observations.
 
 MCP servers bundled by external plugins execute separate packages and may access the browser, network, local files, or credentials. The profile records this risk but cannot make an upstream unpinned `latest` dependency reproducible.
 

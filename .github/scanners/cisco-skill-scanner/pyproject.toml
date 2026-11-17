@@ -1,0 +1,9 @@
+[project]
+name = "cisco-skill-scanner-ci"
+version = "0"
+description = "Locked environment for the Cisco AI Defense Skill Scanner that CI runs."
+requires-python = "==3.12.*"
+dependencies = ["cisco-ai-skill-scanner==2.3.1"]
+
+[tool.uv]
+package = false

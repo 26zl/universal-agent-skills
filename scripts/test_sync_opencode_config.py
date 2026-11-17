@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 import unittest
@@ -80,29 +79,16 @@ class OpenCodeConfigTests(unittest.TestCase):
         ):
             self.assertEqual(sync.config_root(Path.home()), Path("/xdg/opencode"))
 
-    def test_ecc_managed_opencode_json_is_left_to_ecc(self) -> None:
+    def test_existing_jsonc_is_preferred_over_plain_json(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / ".config" / "opencode"
             root.mkdir(parents=True)
             plain = root / "opencode.json"
-            plain.write_text('{"plugin": ["./plugins"]}\n', encoding="utf-8")
+            plain.write_text("{}\n", encoding="utf-8")
             self.assertEqual(sync.config_path(Path(directory)), plain)
-            (root / sync.ECC_STATE_NAME).write_text(
-                json.dumps(
-                    {
-                        "schemaVersion": "ecc.install.v1",
-                        "operations": [
-                            {
-                                "kind": "copy-file",
-                                "ownership": "managed",
-                                "destinationPath": str(plain),
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            self.assertEqual(sync.config_path(Path(directory)), root / "opencode.jsonc")
+            jsonc = root / "opencode.jsonc"
+            jsonc.write_text("{}\n", encoding="utf-8")
+            self.assertEqual(sync.config_path(Path(directory)), jsonc)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ validate:
 	ruff format --check .
 	node --check hooks/opencode-guard.js
 	sh -n install.sh bootstrap.sh scripts/test-install.sh
+	shellcheck install.sh bootstrap.sh scripts/test-install.sh
+	shfmt -d install.sh bootstrap.sh scripts/test-install.sh
 
 test: validate
 	./scripts/test-install.sh

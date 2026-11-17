@@ -86,11 +86,18 @@ REMOTE_EXEC = re.compile(
 GIT_PUSH_FORCE = re.compile(
     rf"\bgit\b{SEGMENT}\bpush\b{SEGMENT}(?<![\w-])(?:-f|--force)(?![\w-])"
 )
-RM_TARGET = re.compile(
-    r"\brm\b(?:\s+-[A-Za-z]+)*\s+(?:-[A-Za-z]+\s+)*(/|/\*|~|~/\*|\$HOME)(?:\s|$)"
+# Double quotes keep $HOME expanding but turn "~" into a literal file name, so only
+# the variable forms are accepted inside them.
+HOME_VARIABLE = r"(?:\$HOME|\$\{HOME\})"
+ROOT_OR_HOME = (
+    rf"(?:/{{1,2}}\*?|(?:~|{HOME_VARIABLE})(?:/\*?)?"
+    rf"""|"(?:/|{HOME_VARIABLE}/?)"/?\*?|'/'/?\*?)"""
 )
+RM_TARGET = re.compile(rf"\brm\b(?:\s+-[\w-]*)*\s+{ROOT_OR_HOME}(?=[\s;&|)]|$)")
+RECURSIVE_FLAG = r"(?:-[A-Za-z]*[rR][A-Za-z]*|--recursive)"
+FORCE_FLAG = r"(?:-[A-Za-z]*f[A-Za-z]*|--force)"
 RM_RECURSIVE_FORCE = re.compile(
-    r"\brm\b(?:\s+-[A-Za-z]*[rR][A-Za-z]*f[A-Za-z]*|\s+-[A-Za-z]*f[A-Za-z]*[rR][A-Za-z]*|\s+-[rR]\b.*\s-f\b|\s+-f\b.*\s-[rR]\b)"
+    rf"\brm\b(?=.*\s{RECURSIVE_FLAG}(?!\S))(?=.*\s{FORCE_FLAG}(?!\S))"
 )
 
 DESTRUCTIVE = (
@@ -111,7 +118,7 @@ DESTRUCTIVE = (
         "remote branch or tag deletion",
     ),
     (
-        lambda c: bool(RM_RECURSIVE_FORCE.search(c) and RM_TARGET.search(c)),
+        lambda c: bool(RM_TARGET.search(c) and RM_RECURSIVE_FORCE.search(c)),
         "recursive delete of a root or home path",
     ),
     (
@@ -193,9 +200,9 @@ def main() -> int:
     print(
         "universal-agent-skills guard blocked this call: "
         + "; ".join(dict.fromkeys(findings))
-        + ".\nRemove the violation. To keep it on purpose, add uas-allow on the same "
-        "line; for an approved destructive command ask the user first and re-run it "
-        "prefixed with UAS_ALLOW=1.",
+        + ".\nRemove the violation. To quote it on purpose, put a uas-allow comment on "
+        "its own line directly above it; for an approved destructive command ask the "
+        "user first and re-run it prefixed with UAS_ALLOW=1.",
         file=sys.stderr,
     )
     return BLOCK

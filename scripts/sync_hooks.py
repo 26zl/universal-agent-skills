@@ -15,6 +15,7 @@ import os
 import sys
 from pathlib import Path
 
+from project_version import version_string
 from sync_instructions import atomic_write
 from sync_opencode_config import config_home
 
@@ -125,7 +126,7 @@ def plan_claude(home: Path, *, uninstall: bool) -> tuple[Path, str | None, bool]
     updated, changed = replace_entry(settings, uninstall=uninstall)
     if not changed:
         return path, None, False
-    return path, json.dumps(updated, indent=2) + "\n", True
+    return path, json.dumps(updated, indent=2, ensure_ascii=False) + "\n", True
 
 
 def plan_opencode(home: Path, *, uninstall: bool) -> tuple[Path, str | None, bool]:
@@ -145,6 +146,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Audit, install, or remove the tool-call guard."
     )
+    parser.add_argument("--version", action="version", version=version_string())
     parser.add_argument("--apply", action="store_true", help="Write planned changes")
     parser.add_argument(
         "--uninstall", action="store_true", help="Remove only the managed guard"

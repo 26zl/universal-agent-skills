@@ -14,12 +14,22 @@ param(
 
     [switch]$Update,
     [switch]$Uninstall,
+    [Alias("WhatIf")]
     [switch]$DryRun,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$AllSkills,
+    [switch]$Version
 )
 
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
+
+if ($Version) {
+    $manifest = Get-Content -LiteralPath (Join-Path $Root ".claude-plugin/plugin.json") -Raw | ConvertFrom-Json
+    Write-Output "universal-agent-skills $($manifest.version)"
+    exit 0
+}
 $SkillsDir = Join-Path $Root "skills"
 $AdaptersFile = Join-Path $Root "adapters/agents.tsv"
 $UserHome = if ($env:UAS_HOME) { $env:UAS_HOME } else { $HOME }
@@ -224,6 +234,21 @@ if ($SkillFilter.Count -gt 0) {
     $CanonicalSkills = @($CanonicalSkills | Where-Object { $SkillFilter -contains $_.Name })
 }
 
+$GeneratedLock = Join-Path $Root "ai-prompts.lock"
+$GeneratedSkills = @()
+if (Test-Path -LiteralPath $GeneratedLock -PathType Leaf) {
+    $GeneratedSkills = @(Get-Content -LiteralPath $GeneratedLock | ForEach-Object {
+        $parts = @(-split $_)
+        if ($parts.Count -eq 2 -and $parts[0] -eq "skill") { $parts[1] }
+    })
+}
+# Generated skills are task-shaped, so a plain install keeps them out of every session.
+$InstallSkills = @(if ($SkillFilter.Count -gt 0 -or $AllSkills) {
+    $CanonicalSkills
+} else {
+    $CanonicalSkills | Where-Object { $GeneratedSkills -notcontains $_.Name }
+})
+
 $BaseDir = if ($Scope -eq "project") {
     if (-not (Test-Path -LiteralPath $ProjectDir -PathType Container)) {
         throw "Project directory does not exist: $ProjectDir"
@@ -322,7 +347,7 @@ foreach ($agent in $SelectedAgents) {
     if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '(^|[\\/])\.\.([\\/]|$)') {
         throw "Unsafe adapter path for ${agent}: $relative"
     }
-    foreach ($skillDir in $CanonicalSkills) {
+    foreach ($skillDir in $InstallSkills) {
         $source = $skillDir.FullName
         $target = Join-Path (Join-Path $BaseDir $relative) $skillDir.Name
         $currentLink = Get-LinkTarget $target

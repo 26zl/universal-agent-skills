@@ -11,6 +11,9 @@ trim_trailing_whitespace = true
 [*.py]
 indent_size = 4
 
+[*.sh]
+switch_case_indent = true
+
 [*.ps1]
 indent_size = 4
 

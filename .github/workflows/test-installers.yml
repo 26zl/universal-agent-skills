@@ -7,6 +7,7 @@ on:
       - "bootstrap.*"
       - "adapters/**"
       - "profiles/**"
+      - "ai-prompts.lock"
       - "skills/**"
       - "scripts/sync_agent_stack.py"
       - "scripts/sync_hooks.py"

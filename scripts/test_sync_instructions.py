@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import sync_instructions as instructions
 
@@ -32,6 +33,18 @@ class InstructionSyncTests(unittest.TestCase):
     def test_malformed_markers_are_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing or duplicated"):
             instructions.replace_block(instructions.START, uninstall=False)
+
+    def test_opencode_rules_follow_xdg_config_home_for_the_real_home(self) -> None:
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": "/xdg"}):
+            self.assertEqual(
+                instructions.targets(Path.home())["opencode"].path,
+                Path("/xdg/opencode/AGENTS.md"),
+            )
+            redirected = Path("/redirected-home")
+            self.assertEqual(
+                instructions.targets(redirected)["opencode"].path,
+                redirected / ".config" / "opencode" / "AGENTS.md",
+            )
 
     def test_apply_check_and_uninstall_use_overridden_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

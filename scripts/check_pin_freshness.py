@@ -12,6 +12,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from project_version import version_string
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = ROOT / "profiles" / "default.json"
 PINNED_GITHUB_RE = re.compile(
@@ -55,15 +57,6 @@ def find_pins(profile: dict) -> list[tuple[str, str, str, str]]:
                 f"opencode plugin {plugin['package']}",
                 plugin["package"],
                 plugin["version"],
-            )
-        )
-    for installer in profile.get("nativeInstallers", []):
-        pins.append(
-            (
-                "npm",
-                f"native installer {installer['name']}",
-                installer["package"],
-                installer["version"],
             )
         )
     for server in profile.get("mcpServers", []):
@@ -149,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare profile pins with upstream sources."
     )
+    parser.add_argument("--version", action="version", version=version_string())
     parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--format", choices=("text", "issue"), default="text")
     args = parser.parse_args(argv or sys.argv[1:])
