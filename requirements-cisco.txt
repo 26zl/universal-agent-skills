@@ -1,1 +1,0 @@
-cisco-ai-skill-scanner==2.3.1

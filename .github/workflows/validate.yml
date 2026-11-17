@@ -93,6 +93,15 @@ jobs:
       - name: Lint shell scripts
         run: shellcheck install.sh bootstrap.sh scripts/test-install.sh
 
+      - name: Check shell formatting
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/shfmt" \
+            https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64
+          echo "76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf  $RUNNER_TEMP/shfmt" |
+            sha256sum --check --strict
+          chmod +x "$RUNNER_TEMP/shfmt"
+          "$RUNNER_TEMP/shfmt" -d install.sh bootstrap.sh scripts/test-install.sh
+
       - name: Parse PowerShell scripts
         shell: pwsh
         run: |

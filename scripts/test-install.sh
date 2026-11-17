@@ -29,6 +29,8 @@ assert_link "$UAS_HOME/.agents/skills/coding-style"
 assert_link "$UAS_HOME/.agents/skills/surgical-implementation"
 assert_link "$UAS_HOME/.claude/skills/coding-style"
 assert_link "$UAS_HOME/.config/opencode/skills/coding-style"
+assert_missing "$UAS_HOME/.agents/skills/security-audit"
+assert_missing "$UAS_HOME/.claude/skills/security-audit"
 
 sh "$ROOT/install.sh" --mode link --agents all
 state_before=$(cksum "$UAS_STATE_HOME/installed.tsv")
@@ -47,6 +49,18 @@ assert_missing "$UAS_HOME/.agents/skills/surgical-implementation"
 assert_missing "$UAS_HOME/.claude/skills/coding-style"
 assert_missing "$UAS_HOME/.config/opencode/skills/coding-style"
 
+sh "$ROOT/install.sh" --mode link --agents codex --all-skills
+assert_link "$UAS_HOME/.agents/skills/coding-style"
+assert_link "$UAS_HOME/.agents/skills/security-audit"
+sh "$ROOT/install.sh" --uninstall --agents codex
+assert_missing "$UAS_HOME/.agents/skills/security-audit"
+
+sh "$ROOT/install.sh" --mode link --agents codex --skill security-audit
+assert_link "$UAS_HOME/.agents/skills/security-audit"
+assert_missing "$UAS_HOME/.agents/skills/coding-style"
+sh "$ROOT/install.sh" --uninstall --agents codex --skill security-audit
+assert_missing "$UAS_HOME/.agents/skills/security-audit"
+
 sh "$ROOT/install.sh" --mode link --agents copilot --skill simplify-code
 assert_link "$UAS_HOME/.agents/skills/simplify-code"
 sh "$ROOT/install.sh" --uninstall --agents copilot --skill simplify-code
@@ -59,15 +73,15 @@ cmp "$ROOT/skills/coding-style/SKILL.md" "$target/SKILL.md" >/dev/null || fail "
 sh "$ROOT/install.sh" --mode copy --agents codex --skill coding-style
 
 printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$TEMP_ROOT/foreign-source" \
-  > "$target/.uas-managed"
+  >"$target/.uas-managed"
 sh "$ROOT/install.sh" --uninstall --agents codex --skill coding-style 2>/dev/null
 [ -f "$target/SKILL.md" ] || fail "uninstall removed a copy owned by another source"
 printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$ROOT/skills/coding-style" \
-  > "$target/.uas-managed"
+  >"$target/.uas-managed"
 
 fail_bin="$TEMP_ROOT/fail-bin"
 mkdir -p "$fail_bin"
-printf '%s\n' '#!/bin/sh' 'exit 1' > "$fail_bin/cp"
+printf '%s\n' '#!/bin/sh' 'exit 1' >"$fail_bin/cp"
 chmod +x "$fail_bin/cp"
 if PATH="$fail_bin:$PATH" sh "$ROOT/install.sh" --mode copy --agents codex --skill coding-style 2>/dev/null; then
   fail "copy refresh should fail when staging fails"
@@ -82,7 +96,7 @@ mkdir -p "$fail_mv_bin"
 printf '%s\n' \
   '#!/bin/sh' \
   "case \"\$1\" in *.uas-tmp.*) exit 1 ;; esac" \
-  'exec /bin/mv "$@"' > "$fail_mv_bin/mv"
+  'exec /bin/mv "$@"' >"$fail_mv_bin/mv"
 chmod +x "$fail_mv_bin/mv"
 if PATH="$fail_mv_bin:$PATH" sh "$ROOT/install.sh" \
   --mode copy --agents codex --skill coding-style 2>/dev/null; then
@@ -101,7 +115,7 @@ printf '%s\n' \
   "case \"\$2\" in" \
   "  *.uas-old.*/target) /bin/mv \"\$@\"; kill -TERM \"\$PPID\"; exit 0 ;;" \
   'esac' \
-  'exec /bin/mv "$@"' > "$kill_mv_bin/mv"
+  'exec /bin/mv "$@"' >"$kill_mv_bin/mv"
 chmod +x "$kill_mv_bin/mv"
 if PATH="$kill_mv_bin:$PATH" sh "$ROOT/install.sh" \
   --mode copy --agents codex --skill coding-style 2>/dev/null; then
@@ -122,7 +136,7 @@ if [ -n "$(git -C "$detached_clone" status --porcelain)" ]; then
   git -C "$detached_clone" -c user.email=tests@example.invalid -c user.name=tests \
     commit --quiet -am "installer under test"
 fi
-detached_output=$(sh "$detached_clone/install.sh" --update --agents codex --skill coding-style 2>&1) && \
+detached_output=$(sh "$detached_clone/install.sh" --update --agents codex --skill coding-style 2>&1) &&
   fail "--update should fail on a detached checkout"
 printf '%s\n' "$detached_output" | grep -q 'tracks no upstream branch' ||
   fail "--update did not explain the detached checkout"
@@ -142,7 +156,7 @@ sh "$ROOT/install.sh" --uninstall --agents codex --skill coding-style
 assert_missing "$target"
 
 mkdir -p "$target"
-printf '%s\n' unmanaged > "$target/owner.txt"
+printf '%s\n' unmanaged >"$target/owner.txt"
 if PATH="$fail_mv_bin:$PATH" sh "$ROOT/install.sh" \
   --mode copy --agents codex --skill coding-style --force 2>/dev/null; then
   fail "forced copy should fail when activation fails"
@@ -151,7 +165,7 @@ fi
 rm -rf -- "$target"
 
 mkdir -p "$target"
-printf '%s\n' unmanaged > "$target/owner.txt"
+printf '%s\n' unmanaged >"$target/owner.txt"
 if sh "$ROOT/install.sh" --mode link --agents codex --skill coding-style 2>/dev/null; then
   fail "unmanaged conflict should fail without --force"
 fi
@@ -170,6 +184,17 @@ dry_home="$TEMP_ROOT/dry-home"
 UAS_HOME="$dry_home" sh "$ROOT/install.sh" --dry-run --agents all
 [ ! -e "$dry_home" ] || fail "dry-run wrote to disk"
 
+version=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/.claude-plugin/plugin.json" | head -n 1)
+[ "$(sh "$ROOT/install.sh" --version)" = "universal-agent-skills $version" ] ||
+  fail "install.sh --version does not report the manifest version"
+[ "$(sh "$ROOT/bootstrap.sh" --version)" = "universal-agent-skills $version" ] ||
+  fail "bootstrap.sh --version does not report the checkout version"
+for script in install.sh bootstrap.sh; do
+  status=0
+  sh "$ROOT/$script" --no-such-option 2>/dev/null || status=$?
+  [ "$status" -eq 2 ] || fail "$script exited $status instead of 2 for invalid usage"
+done
+
 bootstrap_home="$TEMP_ROOT/bootstrap-home"
 UAS_HOME="$bootstrap_home" sh "$ROOT/bootstrap.sh" --dry-run --agents all
 [ ! -e "$bootstrap_home" ] || fail "bootstrap dry-run wrote to disk"
@@ -182,16 +207,32 @@ if UAS_HOME="$bootstrap_home" sh "$ROOT/bootstrap.sh" --dry-run \
   fail "bootstrap accepted credentials in an HTTPS repository URL"
 fi
 
+slow_git="$TEMP_ROOT/slow-git"
+mkdir -p "$slow_git"
+printf '%s\n' '#!/bin/sh' 'case "$*" in *fetch*) sleep 2 ;; esac' >"$slow_git/git"
+chmod +x "$slow_git/git"
+interrupted_data="$TEMP_ROOT/interrupted-data"
+mkdir -p "$interrupted_data"
+PATH="$slow_git:$PATH" sh "$ROOT/bootstrap.sh" --repo https://example.invalid/repo.git \
+  --install-dir "$interrupted_data/repo" >/dev/null 2>&1 &
+interrupted_pid=$!
+sleep 1
+kill -TERM "$interrupted_pid"
+status=0
+wait "$interrupted_pid" || status=$?
+[ "$status" -eq 143 ] || fail "interrupted bootstrap exited $status instead of 143"
+[ -z "$(ls -A "$interrupted_data")" ] || fail "interrupted bootstrap left its staging directory"
+
 dry_checkout="$TEMP_ROOT/dry-checkout"
 dry_sentinel="$TEMP_ROOT/dry-checkout-executed"
 mkdir -p "$dry_checkout"
-printf '%s\n' '#!/bin/sh' "touch \"\$UAS_DRY_RUN_SENTINEL\"" > "$dry_checkout/install.sh"
+printf '%s\n' '#!/bin/sh' "touch \"\$UAS_DRY_RUN_SENTINEL\"" >"$dry_checkout/install.sh"
 UAS_DRY_RUN_SENTINEL="$dry_sentinel" sh "$ROOT/bootstrap.sh" --dry-run \
   --repo https://github.com/example/repository.git --install-dir "$dry_checkout"
 assert_missing "$dry_sentinel"
 
 fake_claude="$TEMP_ROOT/fake-claude"
-printf '%s\n' '#!/bin/sh' "printf '%s\\n' '[]'" > "$fake_claude"
+printf '%s\n' '#!/bin/sh' "printf '%s\\n' '[]'" >"$fake_claude"
 chmod +x "$fake_claude"
 fake_codex="$TEMP_ROOT/fake-codex"
 printf '%s\n' '#!/bin/sh' \
@@ -199,13 +240,13 @@ printf '%s\n' '#!/bin/sh' \
   '  "plugin marketplace list --json") printf "%s\n" '\''{"marketplaces":[]}'\'' ;;' \
   '  "plugin list --available --json") printf "%s\n" '\''{"installed":[],"available":[]}'\'' ;;' \
   '  "mcp list --json") printf "%s\n" '\''[]'\'' ;;' \
-  'esac' > "$fake_codex"
+  'esac' >"$fake_codex"
 chmod +x "$fake_codex"
 fake_text="$TEMP_ROOT/fake-text"
 printf '%s\n' '#!/bin/sh' \
   'case "$*" in' \
   '  "mcp list --json") printf "%s\n" '\''{"mcpServers":{}}'\'' ;;' \
-  'esac' > "$fake_text"
+  'esac' >"$fake_text"
 chmod +x "$fake_text"
 stack_output=$(UAS_HOME="$bootstrap_home" \
   UAS_CLAUDE_COMMAND="$fake_claude" \
@@ -214,7 +255,7 @@ stack_output=$(UAS_HOME="$bootstrap_home" \
   UAS_OPENCODE_COMMAND="$fake_text" \
   UAS_CODE_COMMAND="$fake_text" \
   sh "$ROOT/bootstrap.sh" --dry-run --agents all --with-agent-stack)
-printf '%s\n' "$stack_output" | grep -q 'audit complete; no changes were made' || \
+printf '%s\n' "$stack_output" | grep -q 'audit complete; no changes were made' ||
   fail "bootstrap did not run the agent stack audit"
 [ ! -e "$bootstrap_home" ] || fail "agent stack dry-run wrote to the test home"
 
@@ -222,7 +263,7 @@ target="$UAS_HOME/.agents/skills/coding-style"
 sh "$ROOT/install.sh" --mode copy --agents codex --skill coding-style
 rm -rf -- "$target"
 mkdir -p "$target"
-printf '%s\n' user-content > "$target/notes.txt"
+printf '%s\n' user-content >"$target/notes.txt"
 sh "$ROOT/install.sh" --uninstall --agents codex --skill coding-style 2>/dev/null
 [ -f "$target/notes.txt" ] || fail "uninstall removed an unmanaged replacement"
 rm -rf -- "$target"

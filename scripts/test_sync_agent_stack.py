@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,15 +22,68 @@ import validate as repository_validate
 
 
 PROFILE_PATH = Path(__file__).resolve().parents[1] / "profiles" / "default.json"
+EXAMPLE_REF = "0123456789abcdef0123456789abcdef01234567"
+
+
+def fixture_profile(profile: dict) -> dict:
+    """Extend the default profile with synthetic entries for every planner path."""
+    fixture = copy.deepcopy(profile)
+    fixture["claude"]["marketplaces"].append(
+        {"name": "example-market", "source": "example/market"}
+    )
+    fixture["claude"]["plugins"].append(
+        {
+            "id": "example-memory@example-market",
+            "enabled": True,
+            "risk": "sensitive",
+            "requiresExplicitOptIn": True,
+            "reason": "Synthetic plugin that persists session context.",
+        }
+    )
+    fixture["codex"]["marketplaces"] = [
+        {"name": "example-market", "source": "example/market", "ref": EXAMPLE_REF}
+    ]
+    fixture["codex"]["plugins"].append(
+        {
+            "id": "example-tools@example-market",
+            "enabled": True,
+            "risk": "standard",
+            "reason": "Synthetic plugin from a pinned marketplace.",
+        }
+    )
+    fixture["copilot"] = {
+        "marketplaces": [{"name": "example-market", "source": "example/market"}],
+        "plugins": [
+            {
+                "id": "example-tools@example-market",
+                "enabled": True,
+                "risk": "standard",
+                "reason": "Synthetic Copilot CLI plugin.",
+            }
+        ],
+    }
+    fixture["opencode"] = {
+        "plugins": [
+            {
+                "package": "@example/opencode-plugin",
+                "version": "1.2.3",
+                "risk": "standard",
+                "reason": "Synthetic OpenCode plugin.",
+            }
+        ]
+    }
+    return fixture
 
 
 class AgentStackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        cls.fixture = fixture_profile(cls.profile)
 
     def test_profile_is_valid(self) -> None:
         self.assertEqual(stack.validate_profile(self.profile), [])
+        self.assertEqual(stack.validate_profile(self.fixture), [])
 
     def test_plugin_versions_and_release_tags_are_validated(self) -> None:
         self.assertEqual(
@@ -50,6 +104,34 @@ class AgentStackTests(unittest.TestCase):
             )
         )
 
+    def test_ai_prompts_lock_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skills = root / "skills"
+            (skills / "example-audit").mkdir(parents=True)
+            (skills / "example-audit" / "SKILL.md").write_text("x\n", encoding="utf-8")
+            lock = root / "ai-prompts.lock"
+            valid = (
+                "# Written by the exporter.\n"
+                "source https://github.com/example/prompts\n"
+                f"commit {'a' * 40}\n"
+                "skill example-audit\n"
+            )
+            lock.write_text(valid, encoding="utf-8")
+            self.assertEqual(
+                repository_validate.validate_ai_prompts_lock(lock, skills), []
+            )
+            for broken, message in (
+                (valid.replace("a" * 40, "main"), "commit"),
+                (valid + "skill missing-skill\n", "missing-skill"),
+                (valid + "skill example-audit\n", "twice"),
+                (valid.replace("source", "origin"), "expected"),
+            ):
+                with self.subTest(message=message):
+                    lock.write_text(broken, encoding="utf-8")
+                    errors = repository_validate.validate_ai_prompts_lock(lock, skills)
+                    self.assertTrue(any(message in error for error in errors), errors)
+
     def test_marketplace_sources_reject_unsafe_values(self) -> None:
         profile = copy.deepcopy(self.profile)
         profile["claude"]["marketplaces"][0]["source"] = (
@@ -62,24 +144,22 @@ class AgentStackTests(unittest.TestCase):
             )
         )
 
-    def test_karpathy_legacy_source_is_accepted(self) -> None:
-        desired = next(
-            item
-            for item in self.profile["claude"]["marketplaces"]
-            if item["name"] == "karpathy-skills"
-        )
+    def test_legacy_marketplace_source_is_accepted(self) -> None:
+        desired = {
+            "name": "example-market",
+            "source": "example/market",
+            "acceptedSources": ["legacy-owner/market"],
+        }
+        self.assertTrue(stack.source_matches("legacy-owner/market", desired))
         self.assertTrue(
-            stack.source_matches("forrestchang/andrej-karpathy-skills", desired)
+            stack.source_matches("https://github.com/example/market.git", desired)
         )
         self.assertFalse(
-            stack.source_matches(
-                "http://github.com/multica-ai/andrej-karpathy-skills.git",
-                desired,
-            )
+            stack.source_matches("http://github.com/example/market.git", desired)
         )
 
     def test_disabled_plugins_are_not_installed(self) -> None:
-        profile = copy.deepcopy(self.profile)
+        profile = copy.deepcopy(self.fixture)
         claude_plugin = profile["claude"]["plugins"][0]
         claude_plugin["enabled"] = False
         claude_plan = stack.build_claude_plan(
@@ -107,7 +187,7 @@ class AgentStackTests(unittest.TestCase):
         )
 
     def test_active_disabled_desired_plugins_are_drift(self) -> None:
-        profile = copy.deepcopy(self.profile)
+        profile = copy.deepcopy(self.fixture)
         claude_plugin = profile["claude"]["plugins"][0]
         claude_plugin["enabled"] = False
         claude_plan = stack.build_claude_plan(
@@ -165,10 +245,10 @@ class AgentStackTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(RuntimeError, "Codex marketplace"):
             stack.build_codex_plan(
-                self.profile,
+                self.fixture,
                 [
                     {
-                        "name": "ponytail",
+                        "name": "example-market",
                         "marketplaceSource": None,
                     }
                 ],
@@ -179,18 +259,17 @@ class AgentStackTests(unittest.TestCase):
     def test_codex_plan_skips_unmanaged_builtin_marketplace(self) -> None:
         # Codex lists built-in openai-* marketplaces without a marketplaceSource; skip them instead of aborting.
         plan = stack.build_codex_plan(
-            self.profile,
+            self.fixture,
             [{"name": "openai-curated", "root": "/tmp/plugins"}],
             [],
             update=False,
         )
-        # Built-in marketplaces (openai-*) are listed without a marketplaceSource.
         self.assertIsInstance(plan, stack.Plan)
         self.assertNotIn("missing Codex marketplace: openai-curated", plan.drift)
 
     def test_sensitive_plugin_requires_opt_in(self) -> None:
         plan = stack.build_claude_plan(
-            self.profile,
+            self.fixture,
             [],
             [],
             include_sensitive=False,
@@ -198,7 +277,14 @@ class AgentStackTests(unittest.TestCase):
         )
         commands = [action.command for action in plan.actions]
         self.assertFalse(
-            any("claude-mem@thedotmack" in command for command in commands)
+            any("example-memory@example-market" in command for command in commands)
+        )
+        self.assertFalse(
+            any(
+                "marketplace" in command and "example/market" in command
+                for command in commands
+            ),
+            "a marketplace used only by a skipped plugin must not be added",
         )
         self.assertTrue(
             any("skipped sensitive plugin" in note for note in plan.notices)
@@ -206,33 +292,45 @@ class AgentStackTests(unittest.TestCase):
 
     def test_sensitive_plugin_can_be_planned_explicitly(self) -> None:
         plan = stack.build_claude_plan(
-            self.profile,
+            self.fixture,
             [],
             [],
             include_sensitive=True,
             update=False,
         )
         commands = [action.command for action in plan.actions]
-        self.assertTrue(any("claude-mem@thedotmack" in command for command in commands))
+        self.assertTrue(
+            any("example-memory@example-market" in command for command in commands)
+        )
+
+    def test_default_profile_declares_no_opt_in_plugins(self) -> None:
+        plan = stack.build_claude_plan(
+            self.profile, [], [], include_sensitive=False, update=False
+        )
+        self.assertFalse(
+            any("sensitive plugin" in note for note in plan.notices),
+            "the default profile installs completely without --include-sensitive",
+        )
 
     def test_source_drift_blocks_apply_plan(self) -> None:
         plan = stack.build_claude_plan(
             self.profile,
             [
                 {
-                    "name": "ecc",
+                    "name": "humanizer",
                     "source": "github",
-                    "repo": "unexpected/ecc-fork",
+                    "repo": "unexpected/humanizer-fork",
                 }
             ],
             [],
             include_sensitive=False,
             update=False,
         )
-        self.assertTrue(any("ecc" in item for item in plan.blocking))
+        self.assertTrue(any("humanizer" in item for item in plan.blocking))
         self.assertFalse(
             any(
-                action.command[:4] == ("claude", "plugin", "install", "ecc@ecc")
+                action.command[:4]
+                == ("claude", "plugin", "install", "humanizer@humanizer")
                 for action in plan.actions
             )
         )
@@ -241,22 +339,22 @@ class AgentStackTests(unittest.TestCase):
         actions = stack.build_portable_skill_actions(
             self.profile, cache_root=Path("/tmp/test-agent-stack-cache")
         )
-        self.assertEqual(len(actions), 3)
-        self.assertIn("skills@1.7.4", actions[0].command)
-        self.assertEqual(dict(actions[0].environment)["DISABLE_TELEMETRY"], "1")
-        self.assertEqual(
-            actions[0].checkout.commit,
-            "2c606141936f1eeef17fa3043a72095b4765b9c2",
-        )
-        self.assertNotIn(
-            self.profile["portableSkills"][0]["source"], actions[0].command
-        )
+        skills = self.profile["portableSkills"]
+        self.assertEqual(len(actions), len(skills))
+        for skill, action in zip(skills, actions):
+            with self.subTest(skill=skill["name"]):
+                self.assertIn("skills@1.7.4", action.command)
+                self.assertEqual(dict(action.environment)["DISABLE_TELEMETRY"], "1")
+                self.assertEqual(
+                    action.checkout.commit, skill["source"].rsplit("/", 1)[1]
+                )
+                self.assertNotIn(skill["source"], action.command)
 
     def test_codex_plan_adds_pinned_marketplace_before_plugins(self) -> None:
         plan = stack.build_codex_plan(
-            self.profile, [], [], update=False, codex_command="codex-test"
+            self.fixture, [], [], update=False, codex_command="codex-test"
         )
-        self.assertIn("missing Codex marketplace: ponytail", plan.drift)
+        self.assertIn("missing Codex marketplace: example-market", plan.drift)
         commands = [action.command for action in plan.actions]
         self.assertEqual(
             commands[0],
@@ -265,16 +363,20 @@ class AgentStackTests(unittest.TestCase):
                 "plugin",
                 "marketplace",
                 "add",
-                "DietrichGebert/ponytail",
+                "example/market",
                 "--ref",
-                "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846",
+                EXAMPLE_REF,
             ),
         )
-        self.assertTrue(any(command[-1] == "ponytail@ponytail" for command in commands))
+        self.assertTrue(
+            any(command[-1] == "example-tools@example-market" for command in commands)
+        )
 
     def test_codex_plan_enforces_pinned_marketplace_revision(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / ".codex" / ".tmp" / "marketplaces" / "ponytail"
+            root = (
+                Path(directory) / ".codex" / ".tmp" / "marketplaces" / "example-market"
+            )
             root.mkdir(parents=True)
             subprocess.run(["git", "init", "-q", str(root)], check=True)
             (root / "fixture.txt").write_text("fixture\n", encoding="utf-8")
@@ -306,31 +408,31 @@ class AgentStackTests(unittest.TestCase):
                 encoding="utf-8",
             )
             marketplace = {
-                "name": "ponytail",
+                "name": "example-market",
                 "root": str(root),
                 "marketplaceSource": {
                     "sourceType": "git",
-                    "source": "https://github.com/DietrichGebert/ponytail.git",
+                    "source": "https://github.com/example/market.git",
                 },
             }
             current_plugins = [
                 {
-                    "pluginId": "ponytail@ponytail",
-                    "name": "ponytail",
-                    "marketplaceName": "ponytail",
-                    "version": "4.8.4",
+                    "pluginId": "example-tools@example-market",
+                    "name": "example-tools",
+                    "marketplaceName": "example-market",
+                    "version": "1.0.0",
                     "installed": True,
                     "enabled": True,
                 }
             ]
             audit = stack.build_codex_plan(
-                self.profile, [marketplace], current_plugins, update=False
+                self.fixture, [marketplace], current_plugins, update=False
             )
             self.assertTrue(any("revision" in item for item in audit.drift))
             self.assertTrue(audit.blocking)
 
             updated = stack.build_codex_plan(
-                self.profile,
+                self.fixture,
                 [marketplace],
                 current_plugins,
                 update=True,
@@ -338,7 +440,7 @@ class AgentStackTests(unittest.TestCase):
             )
             commands = [action.command for action in updated.actions]
             self.assertIn(
-                ("codex-test", "plugin", "marketplace", "remove", "ponytail"),
+                ("codex-test", "plugin", "marketplace", "remove", "example-market"),
                 commands,
             )
             self.assertIn(
@@ -347,18 +449,18 @@ class AgentStackTests(unittest.TestCase):
                     "plugin",
                     "marketplace",
                     "add",
-                    "DietrichGebert/ponytail",
+                    "example/market",
                     "--ref",
-                    "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846",
+                    EXAMPLE_REF,
                 ),
                 commands,
             )
             self.assertIn(
-                ("codex-test", "plugin", "remove", "ponytail@ponytail"),
+                ("codex-test", "plugin", "remove", "example-tools@example-market"),
                 commands,
             )
             self.assertIn(
-                ("codex-test", "plugin", "add", "ponytail@ponytail"),
+                ("codex-test", "plugin", "add", "example-tools@example-market"),
                 commands,
             )
             self.assertFalse(any("upgrade" in command for command in commands))
@@ -366,7 +468,7 @@ class AgentStackTests(unittest.TestCase):
 
     def test_copilot_plan_uses_marketplace_plugin_id(self) -> None:
         plan = stack.build_copilot_plan(
-            self.profile,
+            self.fixture,
             "Included with GitHub Copilot:\n",
             "No plugins installed.\n",
             update=False,
@@ -374,12 +476,13 @@ class AgentStackTests(unittest.TestCase):
         )
         commands = [action.command for action in plan.actions]
         self.assertIn(
-            ("copilot-test", "plugin", "install", "ponytail@ponytail"), commands
+            ("copilot-test", "plugin", "install", "example-tools@example-market"),
+            commands,
         )
 
     def test_opencode_plugin_is_exactly_pinned(self) -> None:
         plan = stack.build_opencode_plan(
-            self.profile,
+            self.fixture,
             '{"plugin": []}',
             update=False,
             opencode_command="opencode-test",
@@ -389,104 +492,17 @@ class AgentStackTests(unittest.TestCase):
             (
                 "opencode-test",
                 "plugin",
-                "@dietrichgebert/ponytail@5.3.3",
+                "@example/opencode-plugin@1.2.3",
                 "--global",
             ),
         )
         for config in (
-            '{"plugin": [], "note": "@dietrichgebert/ponytail@5.3.3"}',
-            '{"plugin": ["@dietrichgebert/ponytail@5.3.30"]}',
-            '{"plugin": []} // @dietrichgebert/ponytail@5.3.3',
+            '{"plugin": [], "note": "@example/opencode-plugin@1.2.3"}',
+            '{"plugin": ["@example/opencode-plugin@1.2.30"]}',
+            '{"plugin": []} // @example/opencode-plugin@1.2.3',
         ):
-            drifted = stack.build_opencode_plan(self.profile, config, update=False)
+            drifted = stack.build_opencode_plan(self.fixture, config, update=False)
             self.assertTrue(drifted.drift)
-
-    def test_native_ecc_installers_are_target_specific(self) -> None:
-        actions = stack.build_native_installer_actions(
-            self.profile, "npx-test", Path("/tmp/missing-ecc-state")
-        )
-        self.assertEqual(len(actions), 1)
-        self.assertTrue(
-            all("--package=ecc-universal@2.2.3" in action.command for action in actions)
-        )
-        self.assertIn("opencode", actions[0].command)
-        self.assertIn("--no-hooks", actions[0].command)
-        self.assertNotIn("hooks-runtime", actions[0].command)
-
-    def test_native_plan_reports_missing_state_as_drift(self) -> None:
-        plan = stack.build_native_plan(
-            self.profile, "npx-test", Path("/tmp/missing-ecc-state")
-        )
-        self.assertEqual(len(plan.actions), 1)
-        self.assertTrue(any("ecc-opencode" in item for item in plan.drift))
-
-    def test_native_state_path_follows_the_opencode_config_directory(self) -> None:
-        installer = next(
-            item
-            for item in self.profile["nativeInstallers"]
-            if item["name"] == "ecc-opencode"
-        )
-        redirected = Path("/redirected-home")
-        with mock.patch.dict(
-            os.environ, {"XDG_CONFIG_HOME": "/xdg", "OPENCODE_CONFIG_DIR": "/occ"}
-        ):
-            self.assertEqual(
-                stack.installer_state_path(installer, Path.home()),
-                Path("/occ/ecc-install-state.json"),
-            )
-            self.assertEqual(
-                stack.installer_state_path(installer, redirected),
-                redirected / ".config" / "opencode" / "ecc-install-state.json",
-            )
-        with mock.patch.dict(
-            os.environ, {"XDG_CONFIG_HOME": "/xdg", "OPENCODE_CONFIG_DIR": ""}
-        ):
-            self.assertEqual(
-                stack.installer_state_path(installer, Path.home()),
-                Path("/xdg/opencode/ecc-install-state.json"),
-            )
-        with mock.patch.dict(
-            os.environ, {"XDG_CONFIG_HOME": "", "OPENCODE_CONFIG_DIR": ""}
-        ):
-            self.assertEqual(
-                stack.installer_state_path(installer, Path.home()),
-                Path.home() / ".config" / "opencode" / "ecc-install-state.json",
-            )
-
-    def test_native_plan_accepts_a_matching_install_state(self) -> None:
-        installer = next(
-            item
-            for item in self.profile["nativeInstallers"]
-            if item["name"] == "ecc-opencode"
-        )
-        modules = stack.argument_value(installer["arguments"], "--modules")
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory)
-            state_path = stack.installer_state_path(installer, home)
-            state_path.parent.mkdir(parents=True)
-            state = {
-                "schemaVersion": "ecc.install.v1",
-                "source": {"repoVersion": installer["version"]},
-                "target": {"target": "opencode"},
-                "request": {
-                    "profile": None,
-                    "modules": modules.split(","),
-                    "hookConsent": "declined",
-                },
-            }
-            state_path.write_text(json.dumps(state), encoding="utf-8")
-            self.assertEqual(
-                stack.build_native_installer_actions(self.profile, "npx-test", home),
-                [],
-            )
-            for key, value in (("hookConsent", None), ("modules", ["commands-core"])):
-                drifted = json.loads(json.dumps(state))
-                drifted["request"][key] = value
-                state_path.write_text(json.dumps(drifted), encoding="utf-8")
-                actions = stack.build_native_installer_actions(
-                    self.profile, "npx-test", home
-                )
-                self.assertEqual(len(actions), 1)
 
     def test_portable_skill_plan_verifies_installed_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -873,23 +889,23 @@ class AgentStackTests(unittest.TestCase):
 
     def test_sensitive_opt_out_is_not_drift(self) -> None:
         plan = stack.build_claude_plan(
-            self.profile,
+            self.fixture,
             [],
             [],
             include_sensitive=False,
             update=False,
         )
-        self.assertFalse(any("claude-mem" in item for item in plan.drift))
+        self.assertFalse(any("example-memory" in item for item in plan.drift))
 
     def test_copilot_marketplace_source_drift_blocks(self) -> None:
         plan = stack.build_copilot_plan(
-            self.profile,
-            "ponytail https://github.com/unexpected/ponytail-fork\n",
+            self.fixture,
+            "example-market https://github.com/unexpected/market-fork\n",
             "No plugins installed.\n",
             update=False,
             copilot_command="copilot-test",
         )
-        self.assertTrue(any("ponytail" in item for item in plan.blocking))
+        self.assertTrue(any("example-market" in item for item in plan.blocking))
         self.assertFalse(
             any("marketplace" in action.command for action in plan.actions)
         )
@@ -926,7 +942,6 @@ class AgentStackTests(unittest.TestCase):
         self.assertEqual(
             stack.build_mcp_plan(minimal, {}, profile_path=PROFILE_PATH).actions, []
         )
-        self.assertEqual(stack.build_native_installer_actions(minimal, "npx-test"), [])
         self.assertEqual(stack.build_portable_skill_actions(minimal, "npx-test"), [])
 
     def test_pinned_checkout_is_verified_and_reused(self) -> None:
@@ -998,6 +1013,56 @@ class ComponentIsolation(unittest.TestCase):
             "--check", "--component", "claude", "--claude-command", "/nonexistent-cli"
         )
         self.assertEqual(code, 1, "an unevaluated component cannot count as in sync")
+
+    def test_a_section_that_declares_nothing_needs_no_cli(self) -> None:
+        profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        profile["copilot"] = {"marketplaces": [], "plugins": []}
+        profile["opencode"] = {"plugins": []}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profile.json"
+            path.write_text(json.dumps(profile), encoding="utf-8")
+            for component, flag in (
+                ("copilot", "--copilot-command"),
+                ("opencode", "--opencode-command"),
+            ):
+                with self.subTest(component=component):
+                    code, stderr = self.run_main(
+                        "--profile",
+                        str(path),
+                        "--apply",
+                        "--component",
+                        component,
+                        flag,
+                        "/nonexistent-cli",
+                    )
+                    self.assertEqual(code, 0, stderr)
+                    self.assertNotIn("required command not found", stderr)
+
+
+class VersionOption(unittest.TestCase):
+    def test_every_cli_reports_the_manifest_version(self) -> None:
+        scripts = Path(__file__).resolve().parent
+        manifest = scripts.parent / ".claude-plugin" / "plugin.json"
+        expected = (
+            "universal-agent-skills "
+            + json.loads(manifest.read_text(encoding="utf-8"))["version"]
+        )
+        for name in (
+            "sync_agent_stack.py",
+            "sync_instructions.py",
+            "sync_hooks.py",
+            "sync_opencode_config.py",
+            "check_pin_freshness.py",
+        ):
+            with self.subTest(script=name):
+                result = subprocess.run(
+                    [sys.executable, str(scripts / name), "--version"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
 
 
 if __name__ == "__main__":

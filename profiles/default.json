@@ -14,59 +14,16 @@
         "source": "anthropics/claude-plugins-official"
       },
       {
-        "name": "karpathy-skills",
-        "source": "multica-ai/andrej-karpathy-skills",
-        "acceptedSources": [
-          "forrestchang/andrej-karpathy-skills"
-        ]
-      },
-      {
-        "name": "ecc",
-        "source": "https://github.com/affaan-m/ECC.git"
-      },
-      {
-        "name": "ponytail",
-        "source": "DietrichGebert/ponytail"
-      },
-      {
-        "name": "thedotmack",
-        "source": "thedotmack/claude-mem"
-      },
-      {
         "name": "humanizer",
         "source": "blader/humanizer"
       }
     ],
     "plugins": [
       {
-        "id": "andrej-karpathy-skills@karpathy-skills",
-        "enabled": true,
-        "risk": "standard",
-        "reason": "Minimal, goal-driven implementation guidance."
-      },
-      {
-        "id": "code-simplifier@claude-plugins-official",
-        "enabled": true,
-        "risk": "standard",
-        "reason": "Focused code simplification."
-      },
-      {
         "id": "context7@claude-plugins-official",
         "enabled": true,
         "risk": "elevated",
         "reason": "Runs a networked documentation MCP server."
-      },
-      {
-        "id": "ecc@ecc",
-        "enabled": true,
-        "risk": "elevated",
-        "reason": "Large workflow bundle with skills, hooks, commands, and MCP configuration."
-      },
-      {
-        "id": "firecrawl@claude-plugins-official",
-        "enabled": true,
-        "risk": "elevated",
-        "reason": "Networked crawling integration that may require credentials."
       },
       {
         "id": "frontend-design@claude-plugins-official",
@@ -81,31 +38,6 @@
         "reason": "Runs a browser automation MCP server."
       },
       {
-        "id": "ponytail@ponytail",
-        "enabled": true,
-        "risk": "elevated",
-        "reason": "Agent orchestration plugin with executable integration code."
-      },
-      {
-        "id": "skill-creator@claude-plugins-official",
-        "enabled": true,
-        "risk": "standard",
-        "reason": "Creates and validates skills."
-      },
-      {
-        "id": "superpowers@claude-plugins-official",
-        "enabled": true,
-        "risk": "standard",
-        "reason": "Structured engineering workflows."
-      },
-      {
-        "id": "claude-mem@thedotmack",
-        "enabled": true,
-        "risk": "sensitive",
-        "requiresExplicitOptIn": true,
-        "reason": "Captures session and tool-use context in a persistent local memory service."
-      },
-      {
         "id": "humanizer@humanizer",
         "enabled": true,
         "risk": "standard",
@@ -114,13 +46,6 @@
     ]
   },
   "codex": {
-    "marketplaces": [
-      {
-        "name": "ponytail",
-        "source": "DietrichGebert/ponytail",
-        "ref": "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846"
-      }
-    ],
     "plugins": [
       {
         "id": "documents@openai-primary-runtime",
@@ -175,46 +100,14 @@
         "enabled": true,
         "risk": "elevated",
         "reason": "Native Codex computer interaction capability."
-      },
-      {
-        "id": "superpowers@openai-curated",
-        "enabled": true,
-        "risk": "standard",
-        "reason": "Codex-native structured engineering workflows."
-      },
-      {
-        "id": "ponytail@ponytail",
-        "enabled": true,
-        "risk": "elevated",
-        "reason": "Codex-compatible orchestration plugin with executable hooks."
       }
     ]
   },
   "copilot": {
-    "marketplaces": [
-      {
-        "name": "ponytail",
-        "source": "DietrichGebert/ponytail"
-      }
-    ],
-    "plugins": [
-      {
-        "id": "ponytail@ponytail",
-        "enabled": true,
-        "risk": "elevated",
-        "reason": "Full Ponytail plugin for Copilot CLI; editor integrations use repository instructions and shared skills."
-      }
-    ]
+    "plugins": []
   },
   "opencode": {
-    "plugins": [
-      {
-        "package": "@dietrichgebert/ponytail",
-        "version": "5.3.3",
-        "risk": "elevated",
-        "reason": "OpenCode-native Ponytail rules and commands."
-      }
-    ]
+    "plugins": []
   },
   "vscode": {
     "extensions": [
@@ -257,34 +150,7 @@
       "reason": "Browser automation for Copilot CLI; Codex uses its installed Browser plugin and Claude uses its native plugin."
     }
   ],
-  "nativeInstallers": [
-    {
-      "name": "ecc-opencode",
-      "package": "ecc-universal",
-      "version": "2.2.3",
-      "executable": "ecc-install",
-      "statePath": ".config/opencode/ecc-install-state.json",
-      "arguments": [
-        "--modules",
-        "commands-core,workflow-quality",
-        "--target",
-        "opencode",
-        "--no-hooks"
-      ],
-      "risk": "elevated",
-      "reason": "ECC native OpenCode adapter inside OpenCode's configuration directory; the hook runtime is declined explicitly, and no ECC OpenCode npm plugin may be added on top."
-    }
-  ],
   "portableSkills": [
-    {
-      "name": "karpathy-guidelines",
-      "source": "https://github.com/multica-ai/andrej-karpathy-skills/tree/2c606141936f1eeef17fa3043a72095b4765b9c2",
-      "agents": [
-        "codex",
-        "opencode"
-      ],
-      "scope": "global"
-    },
     {
       "name": "humanizer",
       "source": "https://github.com/blader/humanizer/tree/0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",

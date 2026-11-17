@@ -20,7 +20,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import sync_instructions as instruction_sync
-from sync_opencode_config import config_path, config_root
+from project_version import version_string
+from sync_opencode_config import config_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,6 @@ PINNED_GITHUB_RE = re.compile(
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 NPM_PACKAGE_RE = re.compile(r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
-EXECUTABLE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 VSCODE_EXTENSION_RE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9][A-Za-z0-9._-]*$"
 )
@@ -42,6 +42,16 @@ GITHUB_SHORTHAND_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?$")
 ALLOWED_RISKS = {"standard", "elevated", "sensitive"}
 ALLOWED_SKILL_AGENTS = {"claude-code", "codex", "opencode"}
 ALLOWED_MCP_AGENTS = {"codex", "opencode", "copilot"}
+COMPONENTS = (
+    "claude",
+    "codex",
+    "copilot",
+    "opencode",
+    "vscode",
+    "mcp",
+    "skills",
+    "instructions",
+)
 
 
 @dataclass(frozen=True)
@@ -300,43 +310,6 @@ def validate_profile(profile: dict[str, Any]) -> list[str]:
         ):
             errors.append(f"{prefix}.agents contains duplicates or unsupported agents")
         errors.extend(validate_risk_reason(prefix, server))
-
-    native_installers = profile.get("nativeInstallers", [])
-    if not isinstance(native_installers, list):
-        errors.append("nativeInstallers must be an array")
-        native_installers = []
-    installer_names: set[str] = set()
-    for index, installer in enumerate(native_installers):
-        prefix = f"nativeInstallers[{index}]"
-        if not isinstance(installer, dict):
-            errors.append(f"{prefix} must be an object")
-            continue
-        name = str(installer.get("name") or "")
-        if not NAME_RE.fullmatch(name):
-            errors.append(f"{prefix}.name must be lowercase kebab-case")
-        elif name in installer_names:
-            errors.append(f"{prefix}.name is duplicated")
-        else:
-            installer_names.add(name)
-        if not NPM_PACKAGE_RE.fullmatch(str(installer.get("package", ""))):
-            errors.append(f"{prefix}.package must be a safe npm package name")
-        if not SEMVER_RE.fullmatch(str(installer.get("version", ""))):
-            errors.append(f"{prefix}.version must be an exact semantic version")
-        if not EXECUTABLE_RE.fullmatch(str(installer.get("executable", ""))):
-            errors.append(f"{prefix}.executable must be a safe executable name")
-        state_path = Path(str(installer.get("statePath", "")))
-        if (
-            str(state_path) in {"", "."}
-            or state_path.is_absolute()
-            or ".." in state_path.parts
-        ):
-            errors.append(f"{prefix}.statePath must be a safe home-relative path")
-        arguments = installer.get("arguments")
-        if not isinstance(arguments, list) or not all(
-            isinstance(item, str) and item and "\x00" not in item for item in arguments
-        ):
-            errors.append(f"{prefix}.arguments must contain non-empty strings")
-        errors.extend(validate_risk_reason(prefix, installer))
 
     portable = profile.get("portableSkills", [])
     if not isinstance(portable, list):
@@ -1074,98 +1047,6 @@ def build_opencode_plan(
             command.append("--force")
         actions.append(Action(f"install OpenCode plugin {pinned}", tuple(command)))
     return Plan(actions, notices, drift, [])
-
-
-def argument_value(arguments: list[str], flag: str) -> str | None:
-    if flag not in arguments:
-        return None
-    index = arguments.index(flag)
-    if index + 1 >= len(arguments):
-        raise RuntimeError(f"nativeInstallers argument {flag} requires a value")
-    return arguments[index + 1]
-
-
-def installer_state_path(installer: dict[str, Any], home: Path) -> Path:
-    relative = Path(installer["statePath"])
-    # ".config/opencode" is OpenCode's configuration directory, which OpenCode and
-    # ecc-install relocate through OPENCODE_CONFIG_DIR or XDG_CONFIG_HOME.
-    if relative.parts[:2] == (".config", "opencode"):
-        return config_root(home).joinpath(*relative.parts[2:])
-    return home / relative
-
-
-def installer_hook_consent(arguments: list[str]) -> str | None:
-    if "--enable-hooks" in arguments:
-        return "enabled"
-    if "--no-hooks" in arguments:
-        return "declined"
-    return None
-
-
-def build_native_installer_actions(
-    profile: dict[str, Any],
-    npx_command: str = "npx",
-    home: Path | None = None,
-) -> list[Action]:
-    actions: list[Action] = []
-    resolved_home = home or Path(os.environ.get("UAS_HOME") or Path.home()).expanduser()
-    for installer in profile.get("nativeInstallers", []):
-        state_path = installer_state_path(installer, resolved_home)
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            state = {}
-        if not isinstance(state, dict):
-            state = {}
-        source_state = state.get("source")
-        target_state = state.get("target")
-        request_state = state.get("request")
-        source_state = source_state if isinstance(source_state, dict) else {}
-        target_state = target_state if isinstance(target_state, dict) else {}
-        request_state = request_state if isinstance(request_state, dict) else {}
-        arguments = installer["arguments"]
-        target = argument_value(arguments, "--target")
-        requested_profile = argument_value(arguments, "--profile")
-        modules_value = argument_value(arguments, "--modules")
-        requested_modules = modules_value.split(",") if modules_value else []
-        if (
-            state.get("schemaVersion") == "ecc.install.v1"
-            and source_state.get("repoVersion") == installer["version"]
-            and target_state.get("target") == target
-            and request_state.get("profile") == requested_profile
-            and request_state.get("modules", []) == requested_modules
-            and request_state.get("hookConsent") == installer_hook_consent(arguments)
-        ):
-            continue
-        package = f"{installer['package']}@{installer['version']}"
-        actions.append(
-            Action(
-                f"ensure native integration {installer['name']}",
-                (
-                    npx_command,
-                    "--yes",
-                    f"--package={package}",
-                    installer["executable"],
-                    *arguments,
-                ),
-                (("DISABLE_TELEMETRY", "1"),),
-            )
-        )
-    return actions
-
-
-def build_native_plan(
-    profile: dict[str, Any],
-    npx_command: str = "npx",
-    home: Path | None = None,
-) -> Plan:
-    actions = build_native_installer_actions(profile, npx_command, home)
-    drift = [
-        f"native integration differs from the profile: "
-        f"{action.label.removeprefix('ensure native integration ')}"
-        for action in actions
-    ]
-    return Plan(actions, [], drift, [])
 
 
 def build_vscode_plan(
@@ -1966,6 +1847,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Audit or reconcile the declared cross-agent plugin and skill stack."
     )
+    parser.add_argument("--version", action="version", version=version_string())
     parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument(
         "--apply", action="store_true", help="Perform the planned changes"
@@ -1976,22 +1858,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--include-sensitive",
         action="store_true",
-        help="Allow installation or updates of explicit opt-in plugins such as claude-mem",
+        help="Allow installation or updates of plugins marked requiresExplicitOptIn",
     )
     parser.add_argument(
         "--component",
         action="append",
-        choices=(
-            "claude",
-            "codex",
-            "copilot",
-            "opencode",
-            "vscode",
-            "mcp",
-            "native",
-            "skills",
-            "instructions",
-        ),
+        choices=COMPONENTS,
         help="Limit reconciliation to a component; repeat to select more than one",
     )
     parser.add_argument(
@@ -2067,41 +1939,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.validate_only:
         return 0
 
-    components = set(
-        args.component
-        or (
-            "claude",
-            "codex",
-            "copilot",
-            "opencode",
-            "vscode",
-            "mcp",
-            "native",
-            "skills",
-            "instructions",
-        )
-    )
+    components = set(args.component or COMPONENTS)
+    # A section that declares nothing has nothing to audit, so its CLI is not required.
+    components -= {
+        name
+        for name in ("claude", "codex", "copilot", "opencode")
+        if not (profile[name].get("marketplaces") or profile[name].get("plugins"))
+    }
+    if not profile["vscode"].get("extensions"):
+        components.discard("vscode")
     failures: list[str] = []
     plans: list[Plan] = []
     try:
-        native_actions: list[Action] = []
-        if "native" in components:
-            with component_scope("native", strict=args.apply, failures=failures):
-                native_plan = build_native_plan(profile, args.npx_command)
-                native_actions = native_plan.actions
-                if (
-                    args.apply
-                    and native_actions
-                    and shutil.which(args.npx_command) is None
-                ):
-                    raise RuntimeError(
-                        f"required command not found: {args.npx_command}"
-                    )
-                plans.append(native_plan)
-        native_resets_codex = any(
-            action.label == "ensure native integration ecc-codex"
-            for action in native_actions
-        )
         if "claude" in components:
             with component_scope("claude", strict=args.apply, failures=failures):
                 if shutil.which(args.claude_command) is None:
@@ -2149,10 +1998,8 @@ def main(argv: list[str] | None = None) -> int:
                 plans.append(
                     build_codex_plan(
                         profile,
-                        []
-                        if native_resets_codex
-                        else marketplace_value["marketplaces"],
-                        [] if native_resets_codex else plugin_value["installed"],
+                        marketplace_value["marketplaces"],
+                        plugin_value["installed"],
                         update=args.update,
                         codex_command=args.codex_command,
                     )
@@ -2241,27 +2088,24 @@ def main(argv: list[str] | None = None) -> int:
                         raise RuntimeError(
                             "Codex MCP list returned an unexpected JSON shape"
                         )
-                    if native_resets_codex:
-                        current_names["codex"] = set()
-                    else:
-                        desired_codex = {
-                            server["name"]: server
-                            for server in profile.get("mcpServers", [])
-                            if "codex" in server["agents"]
-                        }
-                        current_names["codex"] = set()
-                        conflicting_names["codex"] = set()
-                        for item in codex_mcp:
-                            if not isinstance(item, dict):
-                                continue
-                            name = str(item.get("name", "")).lower()
-                            desired_server = desired_codex.get(name)
-                            if desired_server is None:
-                                continue
-                            if codex_mcp_matches(desired_server, item):
-                                current_names["codex"].add(name)
-                            else:
-                                conflicting_names["codex"].add(name)
+                    desired_codex = {
+                        server["name"]: server
+                        for server in profile.get("mcpServers", [])
+                        if "codex" in server["agents"]
+                    }
+                    current_names["codex"] = set()
+                    conflicting_names["codex"] = set()
+                    for item in codex_mcp:
+                        if not isinstance(item, dict):
+                            continue
+                        name = str(item.get("name", "")).lower()
+                        desired_server = desired_codex.get(name)
+                        if desired_server is None:
+                            continue
+                        if codex_mcp_matches(desired_server, item):
+                            current_names["codex"].add(name)
+                        else:
+                            conflicting_names["codex"].add(name)
                 if "opencode" in required_mcp_agents:
                     config = opencode_config_path()
                     config_text = (

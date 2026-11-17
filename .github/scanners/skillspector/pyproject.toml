@@ -1,0 +1,11 @@
+[project]
+name = "skillspector-ci"
+version = "0"
+description = "Locked environment for NVIDIA SkillSpector, which is distributed from its source repository rather than PyPI."
+requires-python = "==3.12.*"
+dependencies = [
+  "skillspector @ git+https://github.com/NVIDIA/skillspector.git@de2b3a36dc326239d8a7216a86b1784a174912bc",
+]
+
+[tool.uv]
+package = false

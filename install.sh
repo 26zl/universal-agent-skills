@@ -6,6 +6,7 @@ umask 077
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 SKILLS_DIR="$ROOT/skills"
 ADAPTERS_FILE="$ROOT/adapters/agents.tsv"
+GENERATED_LOCK="$ROOT/ai-prompts.lock"
 USER_HOME=${UAS_HOME:-${HOME:?HOME is not set}}
 STATE_HOME=${UAS_STATE_HOME:-${XDG_STATE_HOME:-$USER_HOME/.local/state}/universal-agent-skills}
 STATE_FILE="$STATE_HOME/installed.tsv"
@@ -18,6 +19,7 @@ DRY_RUN=0
 FORCE=0
 UNINSTALL=0
 UPDATE=0
+ALL_SKILLS=0
 SKILL_FILTER=
 
 usage() {
@@ -27,6 +29,8 @@ Usage: ./install.sh [options]
 Options:
   --agents LIST       Comma-separated: codex,claude,opencode,copilot,universal,all
   --skill NAME        Install or remove one skill; repeat for multiple skills
+  --all-skills        Also install the review and workflow skills generated from
+                      AI_prompts; without it only the core skills are installed
   --mode MODE         auto, link, or copy (default: auto)
   --scope SCOPE       global or project (default: global)
   --project-dir DIR   Project root for --scope project (default: current dir)
@@ -34,12 +38,21 @@ Options:
   --uninstall         Remove installations owned by this repository
   --dry-run           Print planned changes without writing
   --force             Back up unmanaged conflicts before installing
+  --version           Print the version and exit
   -h, --help          Show this help
 
 Environment:
   UAS_HOME            Override the home directory (useful for testing)
   UAS_STATE_HOME      Override the state directory
+
+Exit status: 0 on success, 1 when an operation fails, 2 for invalid usage.
 EOF
+}
+
+print_version() {
+  version=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$ROOT/.claude-plugin/plugin.json" 2>/dev/null | head -n 1)
+  printf 'universal-agent-skills %s\n' "${version:-unknown}"
 }
 
 staged=
@@ -78,12 +91,21 @@ die() {
   exit 1
 }
 
+usage_error() {
+  printf 'error: %s\n' "$*" >&2
+  exit 2
+}
+
 print_banner() {
   [ -t 1 ] || return 0
   if [ -n "${NO_COLOR:-}" ]; then
-    white=; grey=; reset=
+    white=
+    grey=
+    reset=
   else
-    white=$(printf '\033[97m'); grey=$(printf '\033[90m'); reset=$(printf '\033[0m')
+    white=$(printf '\033[97m')
+    grey=$(printf '\033[90m')
+    reset=$(printf '\033[0m')
   fi
   printf '%s\n' \
     "${white}███████╗██╗  ██╗██╗██╗     ██╗     ███████╗${reset}" \
@@ -99,7 +121,7 @@ valid_name() {
 }
 
 append_skill_filter() {
-  valid_name "$1" || die "invalid skill name: $1"
+  valid_name "$1" || usage_error "invalid skill name: $1"
   if [ -z "$SKILL_FILTER" ]; then
     SKILL_FILTER=$1
   else
@@ -110,27 +132,27 @@ append_skill_filter() {
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --agents)
-      [ "$#" -ge 2 ] || die "--agents requires a value"
+      [ "$#" -ge 2 ] || usage_error "--agents requires a value"
       AGENTS=$2
       shift 2
       ;;
     --skill)
-      [ "$#" -ge 2 ] || die "--skill requires a value"
+      [ "$#" -ge 2 ] || usage_error "--skill requires a value"
       append_skill_filter "$2"
       shift 2
       ;;
     --mode)
-      [ "$#" -ge 2 ] || die "--mode requires a value"
+      [ "$#" -ge 2 ] || usage_error "--mode requires a value"
       MODE=$2
       shift 2
       ;;
     --scope)
-      [ "$#" -ge 2 ] || die "--scope requires a value"
+      [ "$#" -ge 2 ] || usage_error "--scope requires a value"
       SCOPE=$2
       shift 2
       ;;
     --project-dir)
-      [ "$#" -ge 2 ] || die "--project-dir requires a value"
+      [ "$#" -ge 2 ] || usage_error "--project-dir requires a value"
       PROJECT_DIR=$2
       shift 2
       ;;
@@ -150,24 +172,32 @@ while [ "$#" -gt 0 ]; do
       FORCE=1
       shift
       ;;
-    -h|--help)
+    --all-skills)
+      ALL_SKILLS=1
+      shift
+      ;;
+    --version)
+      print_version
+      exit 0
+      ;;
+    -h | --help)
       usage
       exit 0
       ;;
     *)
-      die "unknown option: $1"
+      usage_error "unknown option: $1"
       ;;
   esac
 done
 
 case "$MODE" in
-  auto|link|copy) ;;
-  *) die "--mode must be auto, link, or copy" ;;
+  auto | link | copy) ;;
+  *) usage_error "--mode must be auto, link, or copy" ;;
 esac
 
 case "$SCOPE" in
-  global|project) ;;
-  *) die "--scope must be global or project" ;;
+  global | project) ;;
+  *) usage_error "--scope must be global or project" ;;
 esac
 
 [ -d "$SKILLS_DIR" ] || die "missing canonical skills directory: $SKILLS_DIR"
@@ -176,7 +206,7 @@ esac
 if [ "$SCOPE" = project ]; then
   PROJECT_DIR=${PROJECT_DIR:-$(pwd -P)}
   if [ ! -d "$PROJECT_DIR" ]; then
-    die "project directory does not exist: $PROJECT_DIR"
+    usage_error "project directory does not exist: $PROJECT_DIR"
   fi
   BASE_DIR=$(CDPATH='' cd -- "$PROJECT_DIR" && pwd -P)
 else
@@ -195,7 +225,7 @@ adapter_path() {
 
 normalize_agents() {
   raw=$(printf '%s' "$AGENTS" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
-  [ -n "$raw" ] || die "--agents cannot be empty"
+  [ -n "$raw" ] || usage_error "--agents cannot be empty"
   case ",$raw," in
     *,all,*) raw=codex,claude,opencode ;;
   esac
@@ -205,10 +235,10 @@ normalize_agents() {
   IFS=,
   for agent in $raw; do
     case "$agent" in
-      universal|copilot) agent=codex ;;
+      universal | copilot) agent=codex ;;
     esac
-    valid_name "$agent" || die "invalid agent id: $agent"
-    adapter_path "$agent" >/dev/null || die "unsupported agent: $agent"
+    valid_name "$agent" || usage_error "invalid agent id: $agent"
+    adapter_path "$agent" >/dev/null || usage_error "unsupported agent: $agent"
     case ",$result," in
       *",$agent,"*) ;;
       *)
@@ -230,6 +260,17 @@ skill_selected() {
   esac
 }
 
+generated_skill() {
+  [ -f "$GENERATED_LOCK" ] &&
+    awk -v name="$1" '$1 == "skill" && $2 == name { found = 1 } END { exit !found }' "$GENERATED_LOCK"
+}
+
+# Generated skills are task-shaped, so a plain install keeps them out of every session.
+install_selected() {
+  skill_selected "$1" || return 1
+  [ -n "$SKILL_FILTER" ] || [ "$ALL_SKILLS" -eq 1 ] || ! generated_skill "$1"
+}
+
 agent_selected() {
   case ",$SELECTED_AGENTS," in
     *",$1,"*) return 0 ;;
@@ -249,7 +290,7 @@ validate_requested_skills() {
   old_ifs=$IFS
   IFS=,
   for name in $SKILL_FILTER; do
-    [ -f "$SKILLS_DIR/$name/SKILL.md" ] || die "unknown skill: $name"
+    [ -f "$SKILLS_DIR/$name/SKILL.md" ] || usage_error "unknown skill: $name"
   done
   IFS=$old_ifs
 }
@@ -292,14 +333,14 @@ state_record() {
   mkdir -p "$STATE_HOME"
   temp=$(mktemp "$STATE_HOME/.installed.XXXXXX") || die "cannot create installer state staging file"
   if [ -f "$STATE_FILE" ]; then
-    if ! awk -F '\t' -v target="$target" '$6 != target' "$STATE_FILE" > "$temp"; then
+    if ! awk -F '\t' -v target="$target" '$6 != target' "$STATE_FILE" >"$temp"; then
       rm -f -- "$temp"
       die "cannot update installer state"
     fi
   else
-    : > "$temp"
+    : >"$temp"
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$SCOPE" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$SCOPE" "$agent" "$skill" "$mode" "$source" "$target" >>"$temp"
   mv "$temp" "$STATE_FILE"
 }
 
@@ -310,7 +351,7 @@ is_managed_copy() {
   [ -f "$marker" ] || return 1
   [ "$(sed -n '1p' "$marker")" = 'managed-by=universal-agent-skills' ] &&
     [ "$(sed -n '2p' "$marker")" = "source=$source" ] &&
-    [ "$(wc -l < "$marker" | tr -d ' ')" -eq 2 ]
+    [ "$(wc -l <"$marker" | tr -d ' ')" -eq 2 ]
 }
 
 is_owned_target() {
@@ -396,7 +437,7 @@ install_one() {
       rm -rf -- "$staged"
       die "cannot stage skill copy: $skill"
     fi
-    if ! printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$source" > "$staged/.uas-managed"; then
+    if ! printf '%s\nsource=%s\n' 'managed-by=universal-agent-skills' "$source" >"$staged/.uas-managed"; then
       rm -rf -- "$staged"
       die "cannot write ownership marker: $skill"
     fi
@@ -463,7 +504,7 @@ uninstall_from_state() {
     [ -n "$target" ] || continue
     if [ "$record_scope" != "$SCOPE" ] || ! agent_selected "$agent" || ! skill_selected "$skill"; then
       if [ "$DRY_RUN" -ne 1 ]; then
-        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >>"$temp"
       fi
       continue
     fi
@@ -473,7 +514,7 @@ uninstall_from_state() {
     if [ "$target" != "$expected" ]; then
       warn "state target is outside the expected adapter path; leaving it unchanged: $target"
       if [ "$DRY_RUN" -ne 1 ]; then
-        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >>"$temp"
       fi
       continue
     fi
@@ -487,10 +528,10 @@ uninstall_from_state() {
     else
       warn "target is no longer owned by this installer; leaving it unchanged: $target"
       if [ "$DRY_RUN" -ne 1 ]; then
-        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >> "$temp"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$record_scope" "$agent" "$skill" "$mode" "$source" "$target" >>"$temp"
       fi
     fi
-  done < "$STATE_FILE"
+  done <"$STATE_FILE"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     :
@@ -545,10 +586,10 @@ warn_native_plugin_duplicates() {
 for agent in $(printf '%s' "$SELECTED_AGENTS" | tr ',' ' '); do
   relative=$(adapter_path "$agent")
   case "$relative" in
-    ''|/*|*..*) die "unsafe adapter path for $agent: $relative" ;;
+    '' | /* | *..*) die "unsafe adapter path for $agent: $relative" ;;
   esac
   for skill in $(list_skills); do
-    skill_selected "$skill" || continue
+    install_selected "$skill" || continue
     source="$SKILLS_DIR/$skill"
     target="$BASE_DIR/$relative/$skill"
     install_one "$agent" "$skill" "$source" "$target"

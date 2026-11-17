@@ -8,8 +8,7 @@ on:
       - "scripts/sync_agent_stack.py"
       - "scripts/sync_instructions.py"
       - "scripts/sync_opencode_config.py"
-      - "requirements-security.txt"
-      - "requirements-cisco.txt"
+      - ".github/scanners/**"
       - ".github/workflows/security.yml"
   push:
     branches: [main]
@@ -20,8 +19,7 @@ on:
       - "scripts/sync_agent_stack.py"
       - "scripts/sync_instructions.py"
       - "scripts/sync_opencode_config.py"
-      - "requirements-security.txt"
-      - "requirements-cisco.txt"
+      - ".github/scanners/**"
       - ".github/workflows/security.yml"
   schedule:
     - cron: "17 4 * * 1"
@@ -29,6 +27,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  UV_PYTHON_DOWNLOADS: never
 
 jobs:
   cisco-skill-scanner:
@@ -45,12 +46,16 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-cisco.txt
 
-      - name: Install pinned Skill Scanner
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+
+      - name: Install locked Skill Scanner
         id: install
-        run: python -m pip install --disable-pip-version-check -r requirements-cisco.txt
+        run: |
+          uv sync --locked --project .github/scanners/cisco-skill-scanner
+          echo "$PWD/.github/scanners/cisco-skill-scanner/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Run strict behavioral scan
         run: >-
@@ -89,7 +94,7 @@ jobs:
           hashFiles('cisco-skill-scanner.sarif') != '' &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: cisco-skill-scanner.sarif
           category: cisco-skill-scanner
@@ -100,13 +105,50 @@ jobs:
           hashFiles('cisco-external-skills.sarif') != '' &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: cisco-external-skills.sarif
           category: cisco-external-skills
 
+  skill-lists:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      repository: ${{ steps.list.outputs.repository }}
+      portable: ${{ steps.list.outputs.portable }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Only kebab-case names reach the scan jobs, so a crafted directory name cannot alter their commands.
+      - name: List repository and portable skills
+        id: list
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json
+          import re
+          from pathlib import Path
+
+          name = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+          repository = sorted(
+              path.parent.name
+              for path in Path("skills").glob("*/SKILL.md")
+              if name.fullmatch(path.parent.name)
+          )
+          profile = json.loads(Path("profiles/default.json").read_text(encoding="utf-8"))
+          portable = [
+              skill["name"]
+              for skill in profile.get("portableSkills", [])
+              if name.fullmatch(str(skill.get("name", "")))
+          ]
+          print("repository=" + json.dumps(repository))
+          print("portable=" + json.dumps(portable))
+          EOF
+
   nvidia-skillspector:
     name: SkillSpector (${{ matrix.skill }})
+    needs: skill-lists
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -115,7 +157,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [accessibility-audit, ai-feature-review, api-design-review, architecture-review, cli-and-scripts-audit, coding-style, data-audit, data-minimization, debug, describe-changes, destructive-ops-approval, docs-consolidation, explain-codebase, full-project-audit, implement-feature, improve-prompt, incident-response, infrastructure-audit, legal-compliance-review, license-compliance, no-ai-traces, operations-audit, performance-audit, prepare-release, production-readiness-review, refactor, repository-audit, review-code, secret-hygiene, security-audit, simplify-code, start-project, supply-chain-pinning, surgical-implementation, threat-model, upgrade-dependencies, ux-review, verify-changes, write-agent-instructions, write-docs, write-tests]
+        skill: ${{ fromJSON(needs.skill-lists.outputs.repository) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -124,38 +166,48 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-security.txt
 
-      - name: Install pinned SkillSpector
-        run: python -m pip install --disable-pip-version-check -r requirements-security.txt
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+
+      - name: Install locked SkillSpector
+        run: |
+          uv sync --locked --project .github/scanners/skillspector
+          echo "$PWD/.github/scanners/skillspector/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Scan without external LLM calls
+        env:
+          SKILL: ${{ matrix.skill }}
         run: >-
-          skillspector scan "skills/${{ matrix.skill }}"
+          skillspector scan "skills/$SKILL"
           --no-llm
           --format sarif
-          --output "skillspector-${{ matrix.skill }}.sarif"
+          --output "skillspector-$SKILL.sarif"
 
       - name: Rebase SARIF paths onto the repository
         if: ${{ !cancelled() && hashFiles(format('skillspector-{0}.sarif', matrix.skill)) != '' }}
+        env:
+          SKILL: ${{ matrix.skill }}
         run: >-
           python scripts/prefix_sarif.py
-          "skillspector-${{ matrix.skill }}.sarif"
-          "skills/${{ matrix.skill }}/"
+          "skillspector-$SKILL.sarif"
+          "skills/$SKILL/"
 
       - name: Upload SARIF
         if: >-
           always() &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: "skillspector-${{ matrix.skill }}.sarif"
           category: "skillspector-${{ matrix.skill }}"
 
   nvidia-external-skillspector:
     name: SkillSpector (external ${{ matrix.skill }})
+    needs: skill-lists
+    if: needs.skill-lists.outputs.portable != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -164,7 +216,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        skill: [karpathy-guidelines, humanizer, frontend-design]
+        skill: ${{ fromJSON(needs.skill-lists.outputs.portable) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -173,11 +225,15 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-security.txt
 
-      - name: Install pinned SkillSpector
-        run: python -m pip install --disable-pip-version-check -r requirements-security.txt
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+
+      - name: Install locked SkillSpector
+        run: |
+          uv sync --locked --project .github/scanners/skillspector
+          echo "$PWD/.github/scanners/skillspector/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Materialize commit-pinned portable skills
         run: >-
@@ -187,25 +243,29 @@ jobs:
           python scripts/sync_agent_stack.py --component skills --apply
 
       - name: Scan without external LLM calls
+        env:
+          SKILL: ${{ matrix.skill }}
         run: >-
-          skillspector scan "$RUNNER_TEMP/uas-home/.agents/skills/${{ matrix.skill }}"
+          skillspector scan "$RUNNER_TEMP/uas-home/.agents/skills/$SKILL"
           --no-llm
           --format sarif
-          --output "skillspector-external-${{ matrix.skill }}.sarif"
+          --output "skillspector-external-$SKILL.sarif"
 
       - name: Rebase SARIF paths onto the install layout
         if: ${{ !cancelled() && hashFiles(format('skillspector-external-{0}.sarif', matrix.skill)) != '' }}
+        env:
+          SKILL: ${{ matrix.skill }}
         run: >-
           python scripts/prefix_sarif.py
-          "skillspector-external-${{ matrix.skill }}.sarif"
-          ".agents/skills/${{ matrix.skill }}/"
+          "skillspector-external-$SKILL.sarif"
+          ".agents/skills/$SKILL/"
 
       - name: Upload SARIF
         if: >-
           always() &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: "skillspector-external-${{ matrix.skill }}.sarif"
           category: "skillspector-external-${{ matrix.skill }}"

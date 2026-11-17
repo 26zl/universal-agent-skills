@@ -10,6 +10,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from project_version import version_string
+from sync_opencode_config import config_home
+
 
 START = "<!-- universal-agent-skills:comments:start -->"
 END = "<!-- universal-agent-skills:comments:end -->"
@@ -42,7 +45,7 @@ def targets(home: Path) -> dict[str, InstructionTarget]:
         "codex": InstructionTarget("codex", home / ".codex" / "AGENTS.md"),
         "claude": InstructionTarget("claude", home / ".claude" / "CLAUDE.md"),
         "opencode": InstructionTarget(
-            "opencode", home / ".config" / "opencode" / "AGENTS.md"
+            "opencode", config_home(home) / "opencode" / "AGENTS.md"
         ),
         "copilot": InstructionTarget(
             "copilot", home / ".copilot" / "copilot-instructions.md"
@@ -100,6 +103,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Audit, install, or remove managed global agent instructions."
     )
+    parser.add_argument("--version", action="version", version=version_string())
     parser.add_argument("--apply", action="store_true", help="Write planned changes")
     parser.add_argument(
         "--uninstall", action="store_true", help="Remove only the managed block"

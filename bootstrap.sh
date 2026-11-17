@@ -21,6 +21,7 @@ ALLOW_INSECURE=0
 SYNC_AGENT_STACK=0
 UPDATE_AGENT_STACK=0
 INCLUDE_SENSITIVE_PLUGINS=0
+ALL_SKILLS=0
 SKILLS=
 
 usage() {
@@ -35,6 +36,8 @@ Options:
   --install-dir DIR    Managed checkout location
   --agents LIST        Passed to install.sh
   --skill NAME         Passed to install.sh; repeatable
+  --all-skills         Passed to install.sh: also install the generated review
+                       and workflow skills
   --mode MODE          auto, link, or copy
   --scope SCOPE        global or project
   --project-dir DIR    Project root for project scope
@@ -44,15 +47,31 @@ Options:
   --with-agent-stack   Install declared plugins, MCPs, instructions, and portable skills
   --update-agent-stack Update installed external plugins during stack sync
   --include-sensitive-plugins
-                       Include explicit opt-in plugins such as claude-mem
+                       Include plugins the profile marks requiresExplicitOptIn
   --allow-insecure-repo  Allow a non-HTTPS/non-SSH repository URL
+  --version            Print the version of this checkout and exit
   -h, --help           Show this help
+
+Exit status: 0 on success, 1 when an operation fails, 2 for invalid usage.
 EOF
 }
 
 die() {
   printf 'error: %s\n' "$*" >&2
   exit 1
+}
+
+usage_error() {
+  printf 'error: %s\n' "$*" >&2
+  exit 2
+}
+
+print_version() {
+  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/install.sh" ]; then
+    sh "$SCRIPT_DIR/install.sh" --version
+  else
+    printf 'universal-agent-skills bootstrap: the version follows --ref (default: main)\n'
+  fi
 }
 
 append_skill() {
@@ -62,120 +81,190 @@ append_skill() {
 # main() guards a piped download: a truncated script fails to parse instead of running a prefix.
 main() {
 
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --repo) [ "$#" -ge 2 ] || die "--repo requires a value"; REPO=$2; shift 2 ;;
-    --ref) [ "$#" -ge 2 ] || die "--ref requires a value"; REF=$2; shift 2 ;;
-    --install-dir) [ "$#" -ge 2 ] || die "--install-dir requires a value"; INSTALL_DIR=$2; shift 2 ;;
-    --agents) [ "$#" -ge 2 ] || die "--agents requires a value"; AGENTS=$2; shift 2 ;;
-    --skill) [ "$#" -ge 2 ] || die "--skill requires a value"; append_skill "$2"; shift 2 ;;
-    --mode) [ "$#" -ge 2 ] || die "--mode requires a value"; MODE=$2; shift 2 ;;
-    --scope) [ "$#" -ge 2 ] || die "--scope requires a value"; SCOPE=$2; shift 2 ;;
-    --project-dir) [ "$#" -ge 2 ] || die "--project-dir requires a value"; PROJECT_DIR=$2; shift 2 ;;
-    --uninstall) UNINSTALL=1; shift ;;
-    --dry-run) DRY_RUN=1; shift ;;
-    --force) FORCE=1; shift ;;
-    --with-agent-stack) SYNC_AGENT_STACK=1; shift ;;
-    --update-agent-stack) SYNC_AGENT_STACK=1; UPDATE_AGENT_STACK=1; shift ;;
-    --include-sensitive-plugins) SYNC_AGENT_STACK=1; INCLUDE_SENSITIVE_PLUGINS=1; shift ;;
-    --allow-insecure-repo) ALLOW_INSECURE=1; shift ;;
-    -h|--help) usage; exit 0 ;;
-    *) die "unknown option: $1" ;;
-  esac
-done
-
-case "$REF" in
-  ''|-*) die "--ref must be non-empty and must not start with '-'" ;;
-esac
-
-if command -v id >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
-  die "do not run the bootstrap as root"
-fi
-
-LOCAL_ROOT=
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/install.sh" ] && [ -d "$SCRIPT_DIR/skills" ]; then
-  LOCAL_ROOT=$SCRIPT_DIR
-fi
-
-if [ -n "$REPO" ]; then
-  if printf '%s' "$REPO" | LC_ALL=C grep -q '[[:cntrl:]]'; then
-    die "repository URL must not contain control characters"
-  fi
-  case "$REPO" in
-    https://*|http://*)
-      authority=${REPO#*://}
-      authority=${authority%%/*}
-      case "$authority" in
-        *@*) die "repository URL must not include credentials; use a credential helper or SSH" ;;
-      esac
-      case "$REPO" in
-        https://*) ;;
-        *) [ "$ALLOW_INSECURE" -eq 1 ] || die "repository URL must use HTTPS or SSH" ;;
-      esac
-      ;;
-    ssh://*|git@*:*) ;;
-    *) [ "$ALLOW_INSECURE" -eq 1 ] || die "repository URL must use HTTPS or SSH" ;;
-  esac
-  command -v git >/dev/null 2>&1 || die "git is required"
-
-  if [ "$DRY_RUN" -eq 1 ]; then
-    printf 'would sync %s at %s into %s\n' "$REPO" "$REF" "$INSTALL_DIR"
-    exit 0
-  else
-    parent=$(dirname -- "$INSTALL_DIR")
-    mkdir -p "$parent"
-    if [ -e "$INSTALL_DIR" ]; then
-      [ -d "$INSTALL_DIR/.git" ] || die "install directory exists but is not a managed git checkout: $INSTALL_DIR"
-      origin=$(git -C "$INSTALL_DIR" remote get-url origin)
-      [ "$origin" = "$REPO" ] || die "existing checkout uses a different origin: $origin"
-      [ -z "$(git -C "$INSTALL_DIR" status --porcelain)" ] || die "managed checkout has local changes: $INSTALL_DIR"
-      git -C "$INSTALL_DIR" fetch --depth 1 origin "$REF"
-      git -C "$INSTALL_DIR" checkout --detach --force FETCH_HEAD
-    else
-      temp=$(mktemp -d "$parent/.repo.uas-tmp.XXXXXX") || die "cannot create checkout staging directory"
-      trap 'rm -rf -- "$temp"' 0 HUP INT TERM
-      git init -q "$temp"
-      git -C "$temp" remote add origin "$REPO"
-      git -C "$temp" fetch --depth 1 origin "$REF"
-      git -C "$temp" checkout -q --detach FETCH_HEAD
-      mv "$temp" "$INSTALL_DIR"
-      trap - 0 HUP INT TERM
-    fi
-  fi
-  LOCAL_ROOT=$INSTALL_DIR
-fi
-
-[ -n "$LOCAL_ROOT" ] || die "--repo is required when bootstrap.sh is not run from a repository checkout"
-[ -f "$LOCAL_ROOT/install.sh" ] || die "checkout does not contain install.sh"
-[ "$UNINSTALL" -eq 0 ] || [ "$SYNC_AGENT_STACK" -eq 0 ] || die "agent stack sync cannot be combined with --uninstall"
-
-set -- --agents "$AGENTS" --mode "$MODE" --scope "$SCOPE"
-[ -n "$PROJECT_DIR" ] && set -- "$@" --project-dir "$PROJECT_DIR"
-[ "$DRY_RUN" -eq 1 ] && set -- "$@" --dry-run
-[ "$FORCE" -eq 1 ] && set -- "$@" --force
-[ "$UNINSTALL" -eq 1 ] && set -- "$@" --uninstall
-
-if [ -n "$SKILLS" ]; then
-  old_ifs=$IFS
-  IFS=,
-  for skill in $SKILLS; do
-    set -- "$@" --skill "$skill"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --repo)
+        [ "$#" -ge 2 ] || usage_error "--repo requires a value"
+        REPO=$2
+        shift 2
+        ;;
+      --ref)
+        [ "$#" -ge 2 ] || usage_error "--ref requires a value"
+        REF=$2
+        shift 2
+        ;;
+      --install-dir)
+        [ "$#" -ge 2 ] || usage_error "--install-dir requires a value"
+        INSTALL_DIR=$2
+        shift 2
+        ;;
+      --agents)
+        [ "$#" -ge 2 ] || usage_error "--agents requires a value"
+        AGENTS=$2
+        shift 2
+        ;;
+      --skill)
+        [ "$#" -ge 2 ] || usage_error "--skill requires a value"
+        append_skill "$2"
+        shift 2
+        ;;
+      --all-skills)
+        ALL_SKILLS=1
+        shift
+        ;;
+      --mode)
+        [ "$#" -ge 2 ] || usage_error "--mode requires a value"
+        MODE=$2
+        shift 2
+        ;;
+      --scope)
+        [ "$#" -ge 2 ] || usage_error "--scope requires a value"
+        SCOPE=$2
+        shift 2
+        ;;
+      --project-dir)
+        [ "$#" -ge 2 ] || usage_error "--project-dir requires a value"
+        PROJECT_DIR=$2
+        shift 2
+        ;;
+      --uninstall)
+        UNINSTALL=1
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      --force)
+        FORCE=1
+        shift
+        ;;
+      --with-agent-stack)
+        SYNC_AGENT_STACK=1
+        shift
+        ;;
+      --update-agent-stack)
+        SYNC_AGENT_STACK=1
+        UPDATE_AGENT_STACK=1
+        shift
+        ;;
+      --include-sensitive-plugins)
+        SYNC_AGENT_STACK=1
+        INCLUDE_SENSITIVE_PLUGINS=1
+        shift
+        ;;
+      --allow-insecure-repo)
+        ALLOW_INSECURE=1
+        shift
+        ;;
+      --version)
+        print_version
+        exit 0
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *) usage_error "unknown option: $1" ;;
+    esac
   done
-  IFS=$old_ifs
-fi
 
-sh "$LOCAL_ROOT/install.sh" "$@"
+  case "$REF" in
+    '' | -*) usage_error "--ref must be non-empty and must not start with '-'" ;;
+  esac
 
-if [ "$SYNC_AGENT_STACK" -eq 1 ]; then
-  command -v python3 >/dev/null 2>&1 || die "Python 3.9 or newer is required for agent stack sync"
-  python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 9))' ||
-    die "Python 3.9 or newer is required for agent stack sync"
-  set -- "$LOCAL_ROOT/scripts/sync_agent_stack.py"
-  [ "$DRY_RUN" -eq 0 ] && set -- "$@" --apply
-  [ "$UPDATE_AGENT_STACK" -eq 1 ] && set -- "$@" --update
-  [ "$INCLUDE_SENSITIVE_PLUGINS" -eq 1 ] && set -- "$@" --include-sensitive
-  python3 "$@"
-fi
+  if command -v id >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
+    die "do not run the bootstrap as root"
+  fi
+
+  LOCAL_ROOT=
+  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/install.sh" ] && [ -d "$SCRIPT_DIR/skills" ]; then
+    LOCAL_ROOT=$SCRIPT_DIR
+  fi
+
+  if [ -n "$REPO" ]; then
+    if printf '%s' "$REPO" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+      usage_error "repository URL must not contain control characters"
+    fi
+    case "$REPO" in
+      https://* | http://*)
+        authority=${REPO#*://}
+        authority=${authority%%/*}
+        case "$authority" in
+          *@*) usage_error "repository URL must not include credentials; use a credential helper or SSH" ;;
+        esac
+        case "$REPO" in
+          https://*) ;;
+          *) [ "$ALLOW_INSECURE" -eq 1 ] || usage_error "repository URL must use HTTPS or SSH" ;;
+        esac
+        ;;
+      ssh://* | git@*:*) ;;
+      *) [ "$ALLOW_INSECURE" -eq 1 ] || usage_error "repository URL must use HTTPS or SSH" ;;
+    esac
+    command -v git >/dev/null 2>&1 || die "git is required"
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+      printf 'would sync %s at %s into %s\n' "$REPO" "$REF" "$INSTALL_DIR"
+      exit 0
+    else
+      parent=$(dirname -- "$INSTALL_DIR")
+      mkdir -p "$parent"
+      if [ -e "$INSTALL_DIR" ]; then
+        [ -d "$INSTALL_DIR/.git" ] || die "install directory exists but is not a managed git checkout: $INSTALL_DIR"
+        origin=$(git -C "$INSTALL_DIR" remote get-url origin)
+        [ "$origin" = "$REPO" ] || die "existing checkout uses a different origin: $origin"
+        [ -z "$(git -C "$INSTALL_DIR" status --porcelain)" ] || die "managed checkout has local changes: $INSTALL_DIR"
+        git -C "$INSTALL_DIR" fetch --depth 1 origin "$REF"
+        git -C "$INSTALL_DIR" checkout --detach --force FETCH_HEAD
+      else
+        temp=$(mktemp -d "$parent/.repo.uas-tmp.XXXXXX") || die "cannot create checkout staging directory"
+        trap 'rm -rf -- "$temp"' 0
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        git init -q "$temp"
+        git -C "$temp" remote add origin "$REPO"
+        git -C "$temp" fetch --depth 1 origin "$REF"
+        git -C "$temp" checkout -q --detach FETCH_HEAD
+        mv "$temp" "$INSTALL_DIR"
+        trap - 0 HUP INT TERM
+      fi
+    fi
+    LOCAL_ROOT=$INSTALL_DIR
+  fi
+
+  [ -n "$LOCAL_ROOT" ] || usage_error "--repo is required when bootstrap.sh is not run from a repository checkout"
+  [ -f "$LOCAL_ROOT/install.sh" ] || die "checkout does not contain install.sh"
+  [ "$UNINSTALL" -eq 0 ] || [ "$SYNC_AGENT_STACK" -eq 0 ] || usage_error "agent stack sync cannot be combined with --uninstall"
+
+  set -- --agents "$AGENTS" --mode "$MODE" --scope "$SCOPE"
+  [ -n "$PROJECT_DIR" ] && set -- "$@" --project-dir "$PROJECT_DIR"
+  [ "$DRY_RUN" -eq 1 ] && set -- "$@" --dry-run
+  [ "$FORCE" -eq 1 ] && set -- "$@" --force
+  [ "$ALL_SKILLS" -eq 1 ] && set -- "$@" --all-skills
+  [ "$UNINSTALL" -eq 1 ] && set -- "$@" --uninstall
+
+  if [ -n "$SKILLS" ]; then
+    old_ifs=$IFS
+    IFS=,
+    for skill in $SKILLS; do
+      set -- "$@" --skill "$skill"
+    done
+    IFS=$old_ifs
+  fi
+
+  sh "$LOCAL_ROOT/install.sh" "$@"
+
+  if [ "$SYNC_AGENT_STACK" -eq 1 ]; then
+    command -v python3 >/dev/null 2>&1 || die "Python 3.9 or newer is required for agent stack sync"
+    python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 9))' ||
+      die "Python 3.9 or newer is required for agent stack sync"
+    set -- "$LOCAL_ROOT/scripts/sync_agent_stack.py"
+    [ "$DRY_RUN" -eq 0 ] && set -- "$@" --apply
+    [ "$UPDATE_AGENT_STACK" -eq 1 ] && set -- "$@" --update
+    [ "$INCLUDE_SENSITIVE_PLUGINS" -eq 1 ] && set -- "$@" --include-sensitive
+    python3 "$@"
+  fi
 
 }
 

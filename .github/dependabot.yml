@@ -8,3 +8,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: uv
+    directories:
+      - /.github/scanners/cisco-skill-scanner
+      - /.github/scanners/skillspector
+    schedule:
+      interval: weekly

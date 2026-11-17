@@ -23,11 +23,38 @@ class PinFreshnessTests(unittest.TestCase):
         kinds = {kind for kind, _, _, _ in pins}
         labels = {label for _, label, _, _ in pins}
         self.assertEqual(kinds, {"git", "npm"})
-        self.assertIn("portable skill karpathy-guidelines", labels)
-        self.assertIn("codex marketplace ponytail", labels)
+        self.assertIn("portable skill humanizer", labels)
         self.assertIn("skills CLI", labels)
         self.assertIn("MCP server context7", labels)
-        self.assertEqual(len(pins), 9)
+        self.assertEqual(len(pins), 5)
+
+    def test_marketplace_and_plugin_pins_are_found(self) -> None:
+        profile = {
+            "codex": {
+                "marketplaces": [
+                    {
+                        "name": "example-market",
+                        "source": "example/market",
+                        "ref": "c" * 40,
+                    }
+                ]
+            },
+            "opencode": {
+                "plugins": [{"package": "@example/opencode-plugin", "version": "1.2.3"}]
+            },
+        }
+        self.assertEqual(
+            freshness.find_pins(profile),
+            [
+                ("git", "codex marketplace example-market", "example/market", "c" * 40),
+                (
+                    "npm",
+                    "opencode plugin @example/opencode-plugin",
+                    "@example/opencode-plugin",
+                    "1.2.3",
+                ),
+            ],
+        )
 
     def test_stale_and_fresh_pins_are_separated(self) -> None:
         pins = [
@@ -57,8 +84,8 @@ class PinFreshnessTests(unittest.TestCase):
         self.assertIn("offline", errors[0])
 
     def test_render_reports_fresh_state(self) -> None:
-        text = freshness.render([], [], total=9, markdown=False)
-        self.assertIn("All 9 pins match", text)
+        text = freshness.render([], [], total=6, markdown=False)
+        self.assertIn("All 6 pins match", text)
 
 
 if __name__ == "__main__":

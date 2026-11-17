@@ -15,6 +15,12 @@ try {
     Assert-True (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/surgical-implementation/SKILL.md")) "Surgical implementation copy missing"
     Assert-True (Test-Path (Join-Path $env:UAS_HOME ".claude/skills/coding-style/SKILL.md")) "Claude copy missing"
     Assert-True (Test-Path (Join-Path $env:UAS_HOME ".config/opencode/skills/coding-style/SKILL.md")) "OpenCode copy missing"
+    Assert-True (-not (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/security-audit"))) "Generated skill installed without -AllSkills"
+
+    & (Join-Path $Root "install.ps1") -Mode copy -Agents codex -AllSkills
+    Assert-True (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/security-audit/SKILL.md")) "-AllSkills did not install a generated skill"
+    & (Join-Path $Root "install.ps1") -Uninstall -Agents codex -Skill security-audit
+    Assert-True (-not (Test-Path (Join-Path $env:UAS_HOME ".agents/skills/security-audit"))) "Generated skill uninstall failed"
 
     & (Join-Path $Root "install.ps1") -Mode copy -Agents codex,claude,opencode
     $statePath = Join-Path $env:UAS_STATE_HOME "installed.json"
@@ -173,6 +179,13 @@ try {
     $env:UAS_HOME = $dryHome
     & (Join-Path $Root "install.ps1") -DryRun -Agents all
     Assert-True (-not (Test-Path $dryHome)) "Dry-run wrote to disk"
+    & (Join-Path $Root "install.ps1") -WhatIf -Agents all
+    Assert-True (-not (Test-Path $dryHome)) "-WhatIf wrote to disk"
+
+    $manifest = Get-Content -LiteralPath (Join-Path $Root ".claude-plugin/plugin.json") -Raw | ConvertFrom-Json
+    $expectedVersion = "universal-agent-skills $($manifest.version)"
+    Assert-True ((& (Join-Path $Root "install.ps1") -Version) -eq $expectedVersion) "install.ps1 -Version does not report the manifest version"
+    Assert-True ((& (Join-Path $Root "bootstrap.ps1") -Version) -eq $expectedVersion) "bootstrap.ps1 -Version does not report the checkout version"
 
     $bootstrapHome = Join-Path $TempRoot "bootstrap-home"
     $env:UAS_HOME = $bootstrapHome

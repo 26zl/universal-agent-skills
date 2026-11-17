@@ -131,6 +131,42 @@ class GuardBlocks(unittest.TestCase):
         )
         self.assert_allowed("Bash", {"command": "rm -rf ./build"})
 
+    def test_root_and_home_deletes_are_caught_in_every_spelling(self) -> None:
+        for command in (
+            "rm -rf -- /",
+            "sudo rm -rf --no-preserve-root /",
+            'rm -rf "/"',
+            'rm -rf "$HOME"',
+            'rm -rf "$HOME"/*',
+            "rm -rf ${HOME}/",
+            "rm -rf $HOME/*",
+            "rm -rf ~/",
+            "rm -rf '/'",
+            "rm -rf //",
+            "rm -rf ~; echo done",
+            "rm -rf /&& ls",
+            "rm --recursive --force /",
+            "rm -r ~ -f",
+        ):
+            with self.subTest(command=command):
+                self.assert_blocked("Bash", {"command": command}, "recursive delete")
+
+    def test_paths_below_root_or_home_are_not_mistaken_for_them(self) -> None:
+        for command in (
+            'rm -rf "$HOME/project"',
+            "rm -rf -- /tmp/build",
+            "rm -rf ~/projects/old",
+            'rm -rf "~"',
+            "rm -rf '$HOME'",
+            "rm -rf $HOMEDIR",
+            "rm -rf /*.log",
+            "rm -i ~",
+            "docker run --rm -it image rm -rf build",
+            "rm -rf build && tail -f server.log",
+        ):
+            with self.subTest(command=command):
+                self.assert_allowed("Bash", {"command": command})
+
     def test_flags_are_not_borrowed_across_shell_segments(self) -> None:
         for command in (
             "git push origin main && rm -f /tmp/lock",
@@ -270,6 +306,19 @@ class HookRegistration(unittest.TestCase):
     def test_malformed_settings_are_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "non-array"):
             sync_hooks.replace_entry({"hooks": {"PreToolUse": "nope"}}, uninstall=False)
+
+    def test_non_ascii_settings_are_written_back_unescaped(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            settings = sync_hooks.claude_settings(home)
+            settings.parent.mkdir(parents=True)
+            settings.write_text(
+                '{"statusLine": {"type": "command", "command": "echo blåbær"}}\n',
+                encoding="utf-8",
+            )
+            _, content, changed = sync_hooks.plan_claude(home, uninstall=False)
+            self.assertTrue(changed)
+            self.assertIn("echo blåbær", content)
 
     def test_foreign_hook_with_repository_name_is_preserved(self) -> None:
         foreign = {

@@ -11,15 +11,28 @@ param(
     [string]$Scope = "global",
     [string]$ProjectDir = (Get-Location).Path,
     [switch]$Uninstall,
+    [Alias("WhatIf")]
     [switch]$DryRun,
     [switch]$Force,
     [switch]$WithAgentStack,
     [switch]$UpdateAgentStack,
     [switch]$IncludeSensitivePlugins,
-    [switch]$AllowInsecureRepo
+    [switch]$AllowInsecureRepo,
+    [switch]$AllSkills,
+    [switch]$Version
 )
 
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
+if ($Version) {
+    $localInstaller = if ($PSScriptRoot) { Join-Path $PSScriptRoot "install.ps1" } else { $null }
+    if ($localInstaller -and (Test-Path -LiteralPath $localInstaller -PathType Leaf)) {
+        & $localInstaller -Version
+    } else {
+        Write-Output "universal-agent-skills bootstrap: the version follows -Ref (default: main)"
+    }
+    exit 0
+}
 $UserHome = if ($env:UAS_HOME) { $env:UAS_HOME } else { $HOME }
 $DataHome = if ($env:LOCALAPPDATA) {
     $env:LOCALAPPDATA
@@ -32,7 +45,7 @@ if (-not $InstallDir) { $InstallDir = Join-Path $DataHome "universal-agent-skill
 if ([string]::IsNullOrWhiteSpace($Ref) -or $Ref.StartsWith("-") -or $Ref.IndexOfAny([char[]]"`r`n") -ge 0) {
     throw "-Ref must be non-empty, contain no line breaks, and not start with '-'"
 }
-if (-not ($IsWindows -or $env:OS -eq "Windows_NT")) {
+if ($env:OS -ne "Windows_NT") {
     $uid = & id -u 2>$null
     if ($LASTEXITCODE -eq 0 -and "$uid" -eq "0") {
         throw "Do not run the bootstrap as root"
@@ -129,6 +142,7 @@ $arguments = @{
     Uninstall = $Uninstall
     DryRun = $DryRun
     Force = $Force
+    AllSkills = $AllSkills
 }
 & $installer @arguments
 
