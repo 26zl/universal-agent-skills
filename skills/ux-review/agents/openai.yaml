@@ -1,4 +1,4 @@
 interface:
   display_name: "UX Review"
-  short_description: "Usability, states, copy, emails, localization and CLI ergonomics"
-  default_prompt: "Use $ux-review to usability, states, copy, emails, localization and CLI ergonomics."
+  short_description: "Check usability, states, copy, emails, localization and CLI ergonomics"
+  default_prompt: "Use $ux-review to check usability, states, copy, emails, localization and CLI ergonomics."

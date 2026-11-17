@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   python-minimum:
-    runs-on: ubuntu-latest
+    # Python 3.9 builds stop at Ubuntu 24.04, and 3.9 stays the minimum because macOS ships it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out repository
