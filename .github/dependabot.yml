@@ -10,7 +10,7 @@ updates:
       interval: weekly
   - package-ecosystem: uv
     directories:
-      - /.github/scanners/cisco-skill-scanner
-      - /.github/scanners/skillspector
+      - /ci/scanners/cisco-skill-scanner
+      - /ci/scanners/skillspector
     schedule:
       interval: weekly

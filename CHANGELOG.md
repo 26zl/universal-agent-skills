@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Changed
+
+- The CI scanner environments move from `.github/scanners/` to `ci/scanners/`, because Dependabot cannot open pull requests that change files under `.github/` for any ecosystem except GitHub Actions.
+
+### Fixed
+
+- The AI_prompts export check runs in a workflow that only pull requests trigger, and the weekly check for unexported AI_prompts changes is a workflow of its own, so CodeQL no longer reports a cache-poisoning risk on the default branch.
+
 ## [0.4.0] - 2026-11-17
 
 Adds 30 review and workflow skills kept in sync with AI_prompts, installs only the core skills by default, keeps the agent stack to plugins that load on demand and add something new, and tightens the guard and the CI supply chain.
