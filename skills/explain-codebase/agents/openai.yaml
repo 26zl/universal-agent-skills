@@ -1,4 +1,4 @@
 interface:
   display_name: "Explain This Codebase"
-  short_description: "An onboarding guide to an unfamiliar project"
-  default_prompt: "Use $explain-codebase to an onboarding guide to an unfamiliar project."
+  short_description: "Get an onboarding guide to an unfamiliar project"
+  default_prompt: "Use $explain-codebase to get an onboarding guide to an unfamiliar project."

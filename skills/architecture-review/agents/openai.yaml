@@ -1,4 +1,4 @@
 interface:
   display_name: "Architecture and Codebase Health Review"
-  short_description: "Structure, risks and technical debt with a prioritized plan"
-  default_prompt: "Use $architecture-review to structure, risks and technical debt with a prioritized plan."
+  short_description: "Assess structure, risks and technical debt with a prioritized plan"
+  default_prompt: "Use $architecture-review to assess structure, risks and technical debt with a prioritized plan."

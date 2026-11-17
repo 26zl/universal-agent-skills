@@ -1,4 +1,4 @@
 interface:
   display_name: "Write Agent Instructions"
-  short_description: "An accurate AGENTS.md or CLAUDE.md for a repository"
-  default_prompt: "Use $write-agent-instructions to an accurate AGENTS.md or CLAUDE.md for a repository."
+  short_description: "Write an accurate AGENTS.md or CLAUDE.md for a repository"
+  default_prompt: "Use $write-agent-instructions to write an accurate AGENTS.md or CLAUDE.md for a repository."

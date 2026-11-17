@@ -1,6 +1,6 @@
 # Written by scripts/export-skills.py in AI_prompts; rerun the export instead of editing.
 source https://github.com/26zl/AI_prompts
-commit f68692bad42a4ff8424ade4aeef7c4cf78f9e020-dirty
+commit b576c89f7ab089b7ef78c88538af2784d96443ae
 skill accessibility-audit
 skill ai-feature-review
 skill api-design-review

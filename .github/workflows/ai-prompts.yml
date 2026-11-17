@@ -7,13 +7,6 @@ on:
       - "ai-prompts.lock"
       - ".codex-plugin/plugin.json"
       - ".github/workflows/ai-prompts.yml"
-  push:
-    branches: [main]
-    paths:
-      - "skills/**"
-      - "ai-prompts.lock"
-      - ".codex-plugin/plugin.json"
-      - ".github/workflows/ai-prompts.yml"
   schedule:
     - cron: "41 5 * * 1"
   workflow_dispatch:
@@ -24,7 +17,8 @@ permissions:
 jobs:
   exported:
     name: Generated skills match the recorded AI_prompts commit
-    if: github.event_name != 'schedule'
+    # AI_prompts code runs only for pull requests, whose cache scope cannot reach the default branch.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -69,60 +63,10 @@ jobs:
           fi
 
   upstream:
-    name: Export the current AI_prompts
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: AI_prompts changes not yet exported
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      stale: ${{ steps.export.outputs.stale }}
-      report: ${{ steps.export.outputs.report }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: 26zl/AI_prompts
-          path: .ai-prompts
-          persist-credentials: false
-
-      - name: Export and list what would change
-        id: export
-        run: |
-          set -eu
-          python3 .ai-prompts/scripts/export-skills.py "$GITHUB_WORKSPACE"
-          changes=$(git status --porcelain -- skills .codex-plugin/plugin.json)
-          if [ -z "$changes" ]; then
-            echo "stale=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          commit=$(git -C .ai-prompts rev-parse HEAD)
-          {
-            echo "## AI_prompts changes not yet exported"
-            echo
-            echo "AI_prompts is at \`$commit\`. Exporting it changes these files here:"
-            echo
-            echo '```'
-            printf '%s\n' "$changes"
-            echo '```'
-            echo
-            echo "Run \`scripts/export-skills.py <path-to-this-checkout>\` from an AI_prompts checkout at that commit and open a pull request with the result."
-          } > report.md
-          cat report.md >> "$GITHUB_STEP_SUMMARY"
-          {
-            echo "stale=true"
-            echo "report<<REPORT_END"
-            cat report.md
-            echo "REPORT_END"
-          } >> "$GITHUB_OUTPUT"
-
-  # The job that may write issues never runs code from the other repository.
-  report:
-    needs: upstream
-    if: needs.upstream.outputs.stale == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -131,13 +75,44 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Open or update the tracking issue
+      # Compares commits through the API instead of running the exporter, so no AI_prompts code runs here.
+      - name: List exported sources changed since the recorded commit
+        id: compare
         env:
           GH_TOKEN: ${{ github.token }}
-          REPORT: ${{ needs.upstream.outputs.report }}
         run: |
           set -eu
-          printf '%s\n' "$REPORT" > report.md
+          commit=$(awk '$1 == "commit" { print $2 }' ai-prompts.lock)
+          if ! printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error file=ai-prompts.lock::the commit line needs a full AI_prompts commit SHA"
+            exit 1
+          fi
+          branch=$(gh api repos/26zl/AI_prompts --jq .default_branch)
+          head=$(gh api "repos/26zl/AI_prompts/commits/$branch" --jq .sha)
+          changed=$(gh api "repos/26zl/AI_prompts/compare/$commit...$head" \
+            --jq '.files[].filename | select(test("^(audits|development|operations|prompting)/[^/]+[.]md$|^scripts/export-skills[.]py$"))')
+          if [ -z "$changed" ]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "## AI_prompts changes not yet exported"
+            echo
+            echo "AI_prompts \`$branch\` is at \`$head\`; \`ai-prompts.lock\` records \`$commit\`. These sources of the generated skills changed in between:"
+            echo
+            printf '%s\n' "$changed" | sed 's/^/- /'
+            echo
+            echo "Run \`scripts/export-skills.py <path-to-this-checkout>\` from an AI_prompts checkout at \`$head\` and open a pull request with the result."
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "stale=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the tracking issue
+        if: steps.compare.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
           title="AI_prompts changes not yet exported"
           number=$(gh issue list --state open --json number,title \
             --jq "[.[] | select(.title == \"$title\")][0].number // empty")
